@@ -1,0 +1,80 @@
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: ecoenergy-db
+    restart: unless-stopped
+    env_file:
+      - ./db/credentials.env
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./db/init.sql:/docker-entrypoint-initdb.d/00_init.sql:ro
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  db-init:
+    image: postgres:16-alpine
+    container_name: ecoenergy-db-init
+    restart: "no"
+    env_file:
+      - ./db/credentials.env
+    depends_on:
+      db:
+        condition: service_healthy
+    volumes:
+      - ./db/init.sql:/init.sql:ro
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - >-
+        psql "postgresql://$$POSTGRES_USER:$$POSTGRES_PASSWORD@db:5432/$$POSTGRES_DB"
+        -v ON_ERROR_STOP=1
+        -f /init.sql
+
+  backend:
+    build:
+      context: ./backend
+    container_name: ecoenergy-backend
+    restart: unless-stopped
+    env_file:
+      - ./db/credentials.env
+    environment:
+      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:8081,http://127.0.0.1:8081}
+      ETL_UPLOAD_DIR: ${ETL_UPLOAD_DIR:-/app/data/uploads}
+      SAMPLE_CSV_PATH: ${SAMPLE_CSV_PATH:-/app/data/raw/sample_consumption.csv}
+      PLATFORM_CONFIG_PATH: ${PLATFORM_CONFIG_PATH:-/opt/ecoenergy/app/platform-config.json}
+    depends_on:
+      db:
+        condition: service_healthy
+      db-init:
+        condition: service_completed_successfully
+    volumes:
+      - backend_uploads:/app/data/uploads
+      - ./app:/opt/ecoenergy/app:ro
+    ports:
+      - "${BACKEND_PORT:-8000}:8000"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/health')"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+
+  frontend:
+    build:
+      context: ./frontend
+      args:
+        VITE_API_BASE_URL: ${VITE_API_BASE_URL:-/api}
+    container_name: ecoenergy-frontend
+    restart: unless-stopped
+    depends_on:
+      backend:
+        condition: service_healthy
+    ports:
+      - "${FRONTEND_PORT:-8081}:8080"
+
+volumes:
+  postgres_data:
+  backend_uploads:
