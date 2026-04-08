@@ -10,3 +10,4 @@ frontend/dist/
 
 # Ignore local task files
 tareas_frontend.md
+seguridad_autenticacion.md

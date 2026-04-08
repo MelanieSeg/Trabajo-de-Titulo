@@ -20,6 +20,13 @@ class Settings(BaseSettings):
     default_alert_water_threshold_pct: float = 18.0
     default_alert_volatility_threshold_pct: float = 15.0
 
+    # JWT Configuration
+    secret_key: str = "your-secret-key-change-in-production"
+    jwt_algorithm: str = "HS256"
+    jwt_expiration_hours: int = 24
+    jwt_issuer: str = "eco-energy-api"
+    jwt_audience: str = "eco-energy-app"
+
     model_config = SettingsConfigDict(
         env_file=".env",
         env_file_encoding="utf-8",
