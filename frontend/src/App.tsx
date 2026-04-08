@@ -5,6 +5,9 @@ import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { lazy, Suspense } from "react";
 import { ThemeProvider } from "./components/theme-provider";
+import { AuthProvider } from "./contexts/AuthContext";
+import { ProtectedRoute } from "./components/ProtectedRoute";
+import { PublicRoute } from "./components/PublicRoute";
 import Index from "./pages/Index.tsx";
 import NotFound from "./pages/NotFound.tsx";
 import Login from "./pages/Login.tsx";
@@ -42,36 +45,218 @@ const App = () => (
         <Toaster />
         <Sonner />
         <BrowserRouter>
-          <Suspense fallback={<div className="min-h-screen flex items-center justify-center text-muted-foreground">Cargando...</div>}>
-            <Routes>
-              <Route path="/login" element={<Login />} />
-              <Route path="/register" element={<Register />} />
-              <Route path="/forgot-password" element={<ForgotPassword />} />
-              <Route path="/" element={<Index />} />
-              <Route path="/electricidad" element={<Electricidad />} />
-              <Route path="/agua" element={<Agua />} />
-              <Route path="/metricas" element={<Metricas />} />
-              <Route path="/kpis" element={<KPIs />} />
-              <Route path="/mapa" element={<Mapa />} />
-              <Route path="/predicciones" element={<Predicciones />} />
-              <Route path="/tendencias" element={<Tendencias />} />
-              <Route path="/anomalias" element={<Anomalias />} />
-              <Route path="/comparativas" element={<Comparativas />} />
-              <Route path="/objetivos" element={<Objetivos />} />
-              <Route path="/subir-datos" element={<SubirDatos />} />
-              <Route path="/reportes" element={<Reportes />} />
-              <Route path="/exportar" element={<Exportar />} />
-              <Route path="/base-datos" element={<BaseDatos />} />
-              <Route path="/calendario" element={<CalendarioPage />} />
-              <Route path="/alertas" element={<AlertasPage />} />
-              <Route path="/usuarios" element={<UsuariosPage />} />
-              <Route path="/empresa" element={<Empresa />} />
-              <Route path="/configuracion" element={<Configuracion />} />
-              <Route path="/seguridad" element={<Seguridad />} />
-              <Route path="/ayuda" element={<Ayuda />} />
-              <Route path="*" element={<NotFound />} />
-            </Routes>
-          </Suspense>
+          <AuthProvider>
+            <Suspense fallback={<div className="min-h-screen flex items-center justify-center text-muted-foreground">Cargando...</div>}>
+              <Routes>
+                {/* Public routes - redirige al dashboard si ya está autenticado */}
+                <Route
+                  path="/login"
+                  element={
+                    <PublicRoute>
+                      <Login />
+                    </PublicRoute>
+                  }
+                />
+                <Route
+                  path="/register"
+                  element={
+                    <PublicRoute>
+                      <Register />
+                    </PublicRoute>
+                  }
+                />
+                <Route
+                  path="/forgot-password"
+                  element={
+                    <PublicRoute>
+                      <ForgotPassword />
+                    </PublicRoute>
+                  }
+                />
+
+                {/* Protected routes */}
+                <Route
+                  path="/"
+                  element={
+                    <ProtectedRoute>
+                      <Index />
+                    </ProtectedRoute>
+                  }
+                />
+                <Route
+                  path="/electricidad"
+                  element={
+                    <ProtectedRoute>
+                      <Electricidad />
+                    </ProtectedRoute>
+                  }
+                />
+                <Route
+                  path="/agua"
+                  element={
+                    <ProtectedRoute>
+                      <Agua />
+                    </ProtectedRoute>
+                  }
+                />
+                <Route
+                  path="/metricas"
+                  element={
+                    <ProtectedRoute>
+                      <Metricas />
+                    </ProtectedRoute>
+                  }
+                />
+                <Route
+                  path="/kpis"
+                  element={
+                    <ProtectedRoute>
+                      <KPIs />
+                    </ProtectedRoute>
+                  }
+                />
+                <Route
+                  path="/mapa"
+                  element={
+                    <ProtectedRoute>
+                      <Mapa />
+                    </ProtectedRoute>
+                  }
+                />
+                <Route
+                  path="/predicciones"
+                  element={
+                    <ProtectedRoute>
+                      <Predicciones />
+                    </ProtectedRoute>
+                  }
+                />
+                <Route
+                  path="/tendencias"
+                  element={
+                    <ProtectedRoute>
+                      <Tendencias />
+                    </ProtectedRoute>
+                  }
+                />
+                <Route
+                  path="/anomalias"
+                  element={
+                    <ProtectedRoute>
+                      <Anomalias />
+                    </ProtectedRoute>
+                  }
+                />
+                <Route
+                  path="/comparativas"
+                  element={
+                    <ProtectedRoute>
+                      <Comparativas />
+                    </ProtectedRoute>
+                  }
+                />
+                <Route
+                  path="/objetivos"
+                  element={
+                    <ProtectedRoute>
+                      <Objetivos />
+                    </ProtectedRoute>
+                  }
+                />
+                <Route
+                  path="/subir-datos"
+                  element={
+                    <ProtectedRoute>
+                      <SubirDatos />
+                    </ProtectedRoute>
+                  }
+                />
+                <Route
+                  path="/reportes"
+                  element={
+                    <ProtectedRoute>
+                      <Reportes />
+                    </ProtectedRoute>
+                  }
+                />
+                <Route
+                  path="/exportar"
+                  element={
+                    <ProtectedRoute>
+                      <Exportar />
+                    </ProtectedRoute>
+                  }
+                />
+                <Route
+                  path="/base-datos"
+                  element={
+                    <ProtectedRoute>
+                      <BaseDatos />
+                    </ProtectedRoute>
+                  }
+                />
+                <Route
+                  path="/calendario"
+                  element={
+                    <ProtectedRoute>
+                      <CalendarioPage />
+                    </ProtectedRoute>
+                  }
+                />
+                <Route
+                  path="/alertas"
+                  element={
+                    <ProtectedRoute>
+                      <AlertasPage />
+                    </ProtectedRoute>
+                  }
+                />
+                <Route
+                  path="/usuarios"
+                  element={
+                    <ProtectedRoute>
+                      <UsuariosPage />
+                    </ProtectedRoute>
+                  }
+                />
+                <Route
+                  path="/empresa"
+                  element={
+                    <ProtectedRoute>
+                      <Empresa />
+                    </ProtectedRoute>
+                  }
+                />
+                <Route
+                  path="/configuracion"
+                  element={
+                    <ProtectedRoute>
+                      <Configuracion />
+                    </ProtectedRoute>
+                  }
+                />
+                <Route
+                  path="/seguridad"
+                  element={
+                    <ProtectedRoute>
+                      <Seguridad />
+                    </ProtectedRoute>
+                  }
+                />
+                <Route
+                  path="/ayuda"
+                  element={
+                    <ProtectedRoute>
+                      <Ayuda />
+                    </ProtectedRoute>
+                  }
+                />
+
+                {/* 404 */}
+                <Route path="*" element={<NotFound />} />
+              </Routes>
+            </Suspense>
+          </AuthProvider>
         </BrowserRouter>
       </TooltipProvider>
     </QueryClientProvider>

@@ -1,10 +1,11 @@
-import { Bell, Search, User, ChevronDown } from "lucide-react";
+import { Bell, Search } from "lucide-react";
 import { SidebarTrigger } from "@/components/ui/sidebar";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { useDashboardData } from "@/hooks/useDashboardData";
 import { ModeToggle } from "./ModeToggle";
+import { UserMenu } from "./UserMenu";
 
 export function DashboardHeader() {
   const { data } = useDashboardData(12);
@@ -32,16 +33,7 @@ export function DashboardHeader() {
           </Badge>
         </Button>
 
-        <div className="hidden sm:flex items-center gap-2 ml-2 pl-3 border-l cursor-pointer hover:bg-muted rounded-lg px-2 py-1 transition-colors">
-          <div className="h-8 w-8 rounded-full bg-primary flex items-center justify-center">
-            <User className="h-4 w-4 text-primary-foreground" />
-          </div>
-          <div className="hidden lg:block">
-            <p className="text-sm font-medium">Admin</p>
-            <p className="text-xs text-muted-foreground">admin@empresa.com</p>
-          </div>
-          <ChevronDown className="h-3 w-3 text-muted-foreground" />
-        </div>
+        <UserMenu />
       </div>
     </header>
   );

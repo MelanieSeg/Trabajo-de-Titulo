@@ -5,16 +5,41 @@ import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
 import { useState } from "react";
 import { Zap, Droplets, Leaf, Mail, Lock } from "lucide-react";
+import { useNavigate } from "react-router-dom";
+import { useAuth } from "@/contexts/AuthContext";
+import { useToast } from "@/hooks/use-toast";
 
 export default function LoginPage() {
+  const navigate = useNavigate();
+  const { login } = useAuth();
+  const { toast } = useToast();
+
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [rememberMe, setRememberMe] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    // TODO: Conexión con API en Fase 2
-    console.log({ email, password, rememberMe });
+    setIsLoading(true);
+
+    try {
+      await login({ email, password });
+      toast({
+        title: "Éxito",
+        description: "Sesión iniciada correctamente",
+      });
+      navigate("/");
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : "Error al iniciar sesión";
+      toast({
+        title: "Error",
+        description: errorMessage,
+        variant: "destructive",
+      });
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   return (
@@ -60,6 +85,7 @@ export default function LoginPage() {
                     onChange={(e) => setEmail(e.target.value)}
                     className="pl-9 transition-colors focus-visible:ring-1"
                     required
+                    disabled={isLoading}
                   />
                 </div>
               </div>
@@ -84,6 +110,7 @@ export default function LoginPage() {
                     onChange={(e) => setPassword(e.target.value)}
                     className="pl-9 transition-colors focus-visible:ring-1"
                     required
+                    disabled={isLoading}
                   />
                 </div>
               </div>
@@ -94,6 +121,7 @@ export default function LoginPage() {
                   id="remember"
                   checked={rememberMe}
                   onCheckedChange={(checked) => setRememberMe(checked as boolean)}
+                  disabled={isLoading}
                 />
                 <Label
                   htmlFor="remember"
@@ -107,8 +135,9 @@ export default function LoginPage() {
               <Button
                 type="submit"
                 className="w-full mt-2 font-medium shadow-sm transition-all"
+                disabled={isLoading}
               >
-                Iniciar sesión
+                {isLoading ? "Iniciando sesión..." : "Iniciar sesión"}
               </Button>
             </form>
 

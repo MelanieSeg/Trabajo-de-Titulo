@@ -123,16 +123,78 @@ export interface ETLSchedulePayload {
   enabled: boolean;
 }
 
+// Auth interfaces
+export interface User {
+  id: number;
+  email: string;
+  full_name: string | null;
+  email_verified: boolean;
+  status: string;
+  role: string;
+  last_login_at: string | null;
+  created_at: string;
+}
+
+export interface LoginRequest {
+  email: string;
+  password: string;
+}
+
+export interface LoginResponse {
+  access_token: string;
+  token_type: string;
+  user: User;
+}
+
 const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL ?? "/api").replace(/\/$/, "");
+const TOKEN_KEY = "eco_energy_token";
+const USER_KEY = "eco_energy_user";
+
+// Token management
+function setToken(token: string): void {
+  localStorage.setItem(TOKEN_KEY, token);
+}
+
+export function getToken(): string | null {
+  return localStorage.getItem(TOKEN_KEY);
+}
+
+function clearToken(): void {
+  localStorage.removeItem(TOKEN_KEY);
+  localStorage.removeItem(USER_KEY);
+}
+
+function setUser(user: User): void {
+  localStorage.setItem(USER_KEY, JSON.stringify(user));
+}
+
+function getUser(): User | null {
+  const user = localStorage.getItem(USER_KEY);
+  return user ? JSON.parse(user) : null;
+}
 
 async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
+  const token = getToken();
+  const headers = new Headers(options.headers ?? {});
+
+  if (token) {
+    headers.set("Authorization", `Bearer ${token}`);
+  }
+
+  if (!(options.body instanceof FormData)) {
+    headers.set("Content-Type", "application/json");
+  }
+
   const response = await fetch(`${API_BASE_URL}${path}`, {
     ...options,
-    headers: {
-      ...(options.body instanceof FormData ? {} : { "Content-Type": "application/json" }),
-      ...(options.headers ?? {}),
-    },
+    headers,
   });
+
+  // Handle 401 Unauthorized
+  if (response.status === 401) {
+    clearToken();
+    window.location.href = "/login";
+  }
 
   if (!response.ok) {
     let message = `Error ${response.status}`;
@@ -148,6 +210,32 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
   return (await response.json()) as T;
 }
 
+// Auth functions
+export async function login(credentials: LoginRequest): Promise<LoginResponse> {
+  const response = await request<LoginResponse>("/auth/login", {
+    method: "POST",
+    body: JSON.stringify(credentials),
+  });
+
+  setToken(response.access_token);
+  setUser(response.user);
+
+  return response;
+}
+
+export function logout(): void {
+  clearToken();
+}
+
+export function isAuthenticated(): boolean {
+  return getToken() !== null;
+}
+
+export function getCurrentUser(): User | null {
+  return getUser();
+}
+
+// Dashboard functions
 export function fetchDashboardData(months = 12): Promise<DashboardData> {
   return request<DashboardData>(`/dashboard/data?months=${months}&alert_limit=4&activity_limit=5`);
 }
