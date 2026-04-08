@@ -2,23 +2,22 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Checkbox } from "@/components/ui/checkbox";
 import { useState } from "react";
-import { Zap, Droplets, Leaf, Mail, Lock } from "lucide-react";
+import { Zap, Droplets, Leaf, Mail, Lock, User } from "lucide-react";
 
-export default function LoginPage() {
+export default function Register() {
+  const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [rememberMe, setRememberMe] = useState(false);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     // TODO: Conexión con API en Fase 2
-    console.log({ email, password, rememberMe });
+    console.log({ name, email, password });
   };
 
   return (
-    <div className="min-h-screen flex flex-col items-center justify-center bg-muted/30 px-4">
+    <div className="min-h-screen flex flex-col items-center justify-center bg-muted/30 px-4 py-8">
       <div className="w-full max-w-md space-y-6">
         {/* Header con iconos (Logo) */}
         <div className="flex justify-center gap-3">
@@ -33,18 +32,37 @@ export default function LoginPage() {
           </div>
         </div>
 
-        {/* Card de Login */}
+        {/* Card de Registro */}
         <Card className="border-border/50 shadow-lg backdrop-blur-sm bg-background/95">
           <CardHeader className="space-y-2 text-center pb-6">
             <CardTitle className="text-2xl font-bold tracking-tight text-foreground">
-              Bienvenido a EcoEnergy
+              Crear una cuenta
             </CardTitle>
             <CardDescription className="text-sm">
-              Gestiona tu consumo de energía de forma inteligente
+              Únete a EcoEnergy y comienza a optimizar tu consumo
             </CardDescription>
           </CardHeader>
           <CardContent>
             <form onSubmit={handleSubmit} className="space-y-4">
+              {/* Name */}
+              <div className="space-y-2">
+                <Label htmlFor="name" className="text-sm font-medium">
+                  Nombre completo
+                </Label>
+                <div className="relative">
+                  <User className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground pointer-events-none" />
+                  <Input
+                    id="name"
+                    type="text"
+                    placeholder="Tu nombre"
+                    value={name}
+                    onChange={(e) => setName(e.target.value)}
+                    className="pl-9 transition-colors focus-visible:ring-1"
+                    required
+                  />
+                </div>
+              </div>
+
               {/* Email */}
               <div className="space-y-2">
                 <Label htmlFor="email" className="text-sm font-medium">
@@ -66,14 +84,9 @@ export default function LoginPage() {
 
               {/* Password */}
               <div className="space-y-2">
-                <div className="flex items-center justify-between">
-                  <Label htmlFor="password" className="text-sm font-medium">
-                    Contraseña
-                  </Label>
-                  <a href="/forgot-password" className="text-xs font-medium text-primary hover:underline hover:text-primary/90 transition-colors">
-                    ¿Olvidaste tu contraseña?
-                  </a>
-                </div>
+                <Label htmlFor="password" className="text-sm font-medium">
+                  Contraseña
+                </Label>
                 <div className="relative">
                   <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground pointer-events-none" />
                   <Input
@@ -88,27 +101,12 @@ export default function LoginPage() {
                 </div>
               </div>
 
-              {/* Remember me */}
-              <div className="flex items-center space-x-2 pt-2">
-                <Checkbox
-                  id="remember"
-                  checked={rememberMe}
-                  onCheckedChange={(checked) => setRememberMe(checked as boolean)}
-                />
-                <Label
-                  htmlFor="remember"
-                  className="text-sm font-normal text-muted-foreground cursor-pointer leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
-                >
-                  Mantener sesión iniciada
-                </Label>
-              </div>
-
               {/* Submit button */}
               <Button
                 type="submit"
                 className="w-full mt-2 font-medium shadow-sm transition-all"
               >
-                Iniciar sesión
+                Registrarse
               </Button>
             </form>
 
@@ -117,25 +115,17 @@ export default function LoginPage() {
               <div className="absolute inset-0 flex items-center">
                 <div className="w-full border-t border-border"></div>
               </div>
-              <div className="relative flex justify-center text-xs">
-                <span className="bg-background px-2 text-muted-foreground">O</span>
-              </div>
             </div>
 
-            {/* Sign up link */}
+            {/* Sign in link */}
             <div className="text-center text-sm text-muted-foreground">
-              ¿No tienes cuenta?{" "}
-              <a href="/register" className="font-semibold text-primary hover:underline transition-colors">
-                Regístrate aquí
+              ¿Ya tienes cuenta?{" "}
+              <a href="/login" className="font-semibold text-primary hover:underline transition-colors">
+                Inicia sesión aquí
               </a>
             </div>
           </CardContent>
         </Card>
-
-        {/* Footer */}
-        <div className="text-center text-xs text-muted-foreground">
-          <p>© {new Date().getFullYear()} EcoEnergy. Todos los derechos reservados.</p>
-        </div>
       </div>
     </div>
   );
