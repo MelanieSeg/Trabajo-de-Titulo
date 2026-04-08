@@ -7,6 +7,7 @@ import { lazy, Suspense } from "react";
 import { ThemeProvider } from "./components/theme-provider";
 import Index from "./pages/Index.tsx";
 import NotFound from "./pages/NotFound.tsx";
+import Login from "./pages/Login.tsx";
 
 const Electricidad = lazy(() => import("./pages/Electricidad.tsx"));
 const Agua = lazy(() => import("./pages/Agua.tsx"));
@@ -41,6 +42,7 @@ const App = () => (
         <BrowserRouter>
           <Suspense fallback={<div className="min-h-screen flex items-center justify-center text-muted-foreground">Cargando...</div>}>
             <Routes>
+              <Route path="/login" element={<Login />} />
               <Route path="/" element={<Index />} />
               <Route path="/electricidad" element={<Electricidad />} />
               <Route path="/agua" element={<Agua />} />
