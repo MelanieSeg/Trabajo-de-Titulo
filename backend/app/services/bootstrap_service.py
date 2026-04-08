@@ -6,8 +6,9 @@ from sqlalchemy import inspect, select
 from sqlalchemy.orm import Session
 
 from app.core.config import get_settings
+from app.core.security import hash_password
 from app.db.base import Base
-from app.db.models import ETLSchedule, EfficiencyTarget, MonthlyConsumption
+from app.db.models import ETLSchedule, EfficiencyTarget, MonthlyConsumption, User
 from app.db.session import engine
 from app.services.alert_service import add_info_alert_if_empty, get_or_create_alert_config, regenerate_anomaly_alerts
 from app.services.etl_service import run_etl_from_csv
@@ -56,6 +57,24 @@ def ensure_defaults(db: Session) -> None:
     apply_platform_config_to_db(db, force_reload=False)
 
 
+def seed_test_user(db: Session) -> None:
+    """Create a test user for development/testing"""
+    test_email = "test@ejemplo.com"
+    test_user = db.scalar(select(User).where(User.email == test_email))
+
+    if not test_user:
+        test_user = User(
+            email=test_email,
+            password_hash=hash_password("password123"),
+            full_name="Usuario de Prueba",
+            email_verified=True,
+            status="ACTIVE",
+            role="ADMIN",
+            must_change_password=False,
+        )
+        db.add(test_user)
+
+
 def seed_if_empty(db: Session) -> None:
     has_data = db.scalar(select(MonthlyConsumption.id).limit(1))
     if has_data:
@@ -78,6 +97,8 @@ def seed_if_empty(db: Session) -> None:
 def bootstrap(db: Session) -> None:
     init_schema()
     ensure_defaults(db)
+    seed_test_user(db)
     seed_if_empty(db)
     regenerate_anomaly_alerts(db)
     add_info_alert_if_empty(db)
+
