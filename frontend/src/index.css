@@ -60,6 +60,59 @@
     --chart-gas: 152 60% 36%;
     --chart-prediction: 280 60% 55%;
   }
+
+  .dark {
+    --background: 152 40% 6%;
+    --foreground: 140 20% 94%;
+
+    --card: 152 30% 10%;
+    --card-foreground: 140 20% 94%;
+
+    --popover: 152 40% 6%;
+    --popover-foreground: 140 20% 94%;
+
+    --primary: 152 70% 42%;
+    --primary-foreground: 0 0% 100%;
+
+    --secondary: 152 20% 14%;
+    --secondary-foreground: 140 20% 90%;
+
+    --muted: 152 15% 18%;
+    --muted-foreground: 140 10% 65%;
+
+    --accent: 152 30% 22%;
+    --accent-foreground: 140 20% 96%;
+
+    --destructive: 0 62% 45%;
+    --destructive-foreground: 0 0% 100%;
+
+    --border: 152 25% 20%;
+    --input: 152 25% 20%;
+    --ring: 152 70% 42%;
+
+    --sidebar-background: 152 40% 8%;
+    --sidebar-foreground: 140 20% 92%;
+    --sidebar-primary: 152 70% 55%;
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: 152 30% 14%;
+    --sidebar-accent-foreground: 140 20% 92%;
+    --sidebar-border: 152 25% 16%;
+    --sidebar-ring: 152 70% 55%;
+    --sidebar-muted: 152 15% 22%;
+
+    --energy-green: 152 70% 42%;
+    --energy-green-light: 152 30% 14%;
+    --energy-blue: 200 80% 55%;
+    --energy-blue-light: 200 30% 16%;
+    --energy-yellow: 45 100% 60%;
+    --energy-yellow-light: 45 30% 16%;
+    --energy-red: 0 72% 51%;
+    --energy-red-light: 0 30% 18%;
+    --chart-water: 200 80% 55%;
+    --chart-electricity: 45 100% 60%;
+    --chart-gas: 152 70% 42%;
+    --chart-prediction: 280 70% 60%;
+  }
 }
 
 @layer base {

@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { useDashboardData } from "@/hooks/useDashboardData";
+import { ModeToggle } from "./ModeToggle";
 
 export function DashboardHeader() {
   const { data } = useDashboardData(12);
@@ -23,6 +24,7 @@ export function DashboardHeader() {
       </div>
 
       <div className="flex items-center gap-2">
+        <ModeToggle />
         <Button variant="ghost" size="icon" className="relative text-muted-foreground hover:text-foreground">
           <Bell className="h-4 w-4" />
           <Badge className="absolute -top-1 -right-1 h-4 w-4 p-0 flex items-center justify-center text-[10px] bg-destructive text-destructive-foreground border-0">

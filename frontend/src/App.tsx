@@ -4,6 +4,7 @@ import { Toaster as Sonner } from "@/components/ui/sonner";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { lazy, Suspense } from "react";
+import { ThemeProvider } from "./components/theme-provider";
 import Index from "./pages/Index.tsx";
 import NotFound from "./pages/NotFound.tsx";
 
@@ -32,41 +33,43 @@ const Ayuda = lazy(() => import("./pages/Ayuda.tsx"));
 const queryClient = new QueryClient();
 
 const App = () => (
-  <QueryClientProvider client={queryClient}>
-    <TooltipProvider>
-      <Toaster />
-      <Sonner />
-      <BrowserRouter>
-        <Suspense fallback={<div className="min-h-screen flex items-center justify-center text-muted-foreground">Cargando...</div>}>
-          <Routes>
-            <Route path="/" element={<Index />} />
-            <Route path="/electricidad" element={<Electricidad />} />
-            <Route path="/agua" element={<Agua />} />
-            <Route path="/metricas" element={<Metricas />} />
-            <Route path="/kpis" element={<KPIs />} />
-            <Route path="/mapa" element={<Mapa />} />
-            <Route path="/predicciones" element={<Predicciones />} />
-            <Route path="/tendencias" element={<Tendencias />} />
-            <Route path="/anomalias" element={<Anomalias />} />
-            <Route path="/comparativas" element={<Comparativas />} />
-            <Route path="/objetivos" element={<Objetivos />} />
-            <Route path="/subir-datos" element={<SubirDatos />} />
-            <Route path="/reportes" element={<Reportes />} />
-            <Route path="/exportar" element={<Exportar />} />
-            <Route path="/base-datos" element={<BaseDatos />} />
-            <Route path="/calendario" element={<CalendarioPage />} />
-            <Route path="/alertas" element={<AlertasPage />} />
-            <Route path="/usuarios" element={<UsuariosPage />} />
-            <Route path="/empresa" element={<Empresa />} />
-            <Route path="/configuracion" element={<Configuracion />} />
-            <Route path="/seguridad" element={<Seguridad />} />
-            <Route path="/ayuda" element={<Ayuda />} />
-            <Route path="*" element={<NotFound />} />
-          </Routes>
-        </Suspense>
-      </BrowserRouter>
-    </TooltipProvider>
-  </QueryClientProvider>
+  <ThemeProvider attribute="class" defaultTheme="system" enableSystem>
+    <QueryClientProvider client={queryClient}>
+      <TooltipProvider>
+        <Toaster />
+        <Sonner />
+        <BrowserRouter>
+          <Suspense fallback={<div className="min-h-screen flex items-center justify-center text-muted-foreground">Cargando...</div>}>
+            <Routes>
+              <Route path="/" element={<Index />} />
+              <Route path="/electricidad" element={<Electricidad />} />
+              <Route path="/agua" element={<Agua />} />
+              <Route path="/metricas" element={<Metricas />} />
+              <Route path="/kpis" element={<KPIs />} />
+              <Route path="/mapa" element={<Mapa />} />
+              <Route path="/predicciones" element={<Predicciones />} />
+              <Route path="/tendencias" element={<Tendencias />} />
+              <Route path="/anomalias" element={<Anomalias />} />
+              <Route path="/comparativas" element={<Comparativas />} />
+              <Route path="/objetivos" element={<Objetivos />} />
+              <Route path="/subir-datos" element={<SubirDatos />} />
+              <Route path="/reportes" element={<Reportes />} />
+              <Route path="/exportar" element={<Exportar />} />
+              <Route path="/base-datos" element={<BaseDatos />} />
+              <Route path="/calendario" element={<CalendarioPage />} />
+              <Route path="/alertas" element={<AlertasPage />} />
+              <Route path="/usuarios" element={<UsuariosPage />} />
+              <Route path="/empresa" element={<Empresa />} />
+              <Route path="/configuracion" element={<Configuracion />} />
+              <Route path="/seguridad" element={<Seguridad />} />
+              <Route path="/ayuda" element={<Ayuda />} />
+              <Route path="*" element={<NotFound />} />
+            </Routes>
+          </Suspense>
+        </BrowserRouter>
+      </TooltipProvider>
+    </QueryClientProvider>
+  </ThemeProvider>
 );
 
 export default App;
