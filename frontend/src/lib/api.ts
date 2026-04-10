@@ -123,7 +123,6 @@ export interface ETLSchedulePayload {
   enabled: boolean;
 }
 
-// Auth interfaces
 export interface User {
   id: number;
   email: string;
@@ -144,6 +143,22 @@ export interface LoginResponse {
   access_token: string;
   token_type: string;
   user: User;
+}
+
+export interface RegisterRequest {
+  full_name: string;
+  email: string;
+  password: string;
+}
+
+export interface RegisterResponse {
+  id: number;
+  email: string;
+  full_name: string;
+  status: string;
+  created_at: string;
+  verification_token: string;
+  message: string;
 }
 
 const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL ?? "/api").replace(/\/$/, "");
@@ -219,6 +234,26 @@ export async function login(credentials: LoginRequest): Promise<LoginResponse> {
 
   setToken(response.access_token);
   setUser(response.user);
+
+  return response;
+}
+
+export async function register(payload: RegisterRequest): Promise<RegisterResponse> {
+  const response = await request<RegisterResponse>("/auth/register", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+
+  return response;
+}
+
+export async function verifyEmail(token: string): Promise<{ message: string; user_id: number; email: string; status: string }> {
+  const response = await request<{ message: string; user_id: number; email: string; status: string }>(
+    `/auth/verify-email/${token}`,
+    {
+      method: "GET",
+    }
+  );
 
   return response;
 }

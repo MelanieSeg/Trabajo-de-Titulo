@@ -12,8 +12,9 @@ import Index from "./pages/Index.tsx";
 import NotFound from "./pages/NotFound.tsx";
 import Login from "./pages/Login.tsx";
 
-const Register = lazy(() => import("./pages/Register.tsx"));
-const ForgotPassword = lazy(() => import("./pages/ForgotPassword.tsx"));
+const Registro = lazy(() => import("./pages/Registro.tsx"));
+const VerificarEmail = lazy(() => import("./pages/VerificarEmail.tsx"));
+const RecuperarContraseña = lazy(() => import("./pages/RecuperarContraseña.tsx"));
 const Electricidad = lazy(() => import("./pages/Electricidad.tsx"));
 const Agua = lazy(() => import("./pages/Agua.tsx"));
 const Metricas = lazy(() => import("./pages/Metricas.tsx"));
@@ -58,20 +59,24 @@ const App = () => (
                   }
                 />
                 <Route
-                  path="/register"
+                  path="/registro"
                   element={
                     <PublicRoute>
-                      <Register />
+                      <Registro />
                     </PublicRoute>
                   }
                 />
                 <Route
-                  path="/forgot-password"
+                  path="/recuperar-contraseña"
                   element={
                     <PublicRoute>
-                      <ForgotPassword />
+                      <RecuperarContraseña />
                     </PublicRoute>
                   }
+                />
+                <Route
+                  path="/verificar-email/:token"
+                  element={<VerificarEmail />}
                 />
 
                 {/* Protected routes */}

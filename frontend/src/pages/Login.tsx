@@ -4,10 +4,11 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
 import { useState } from "react";
-import { Zap, Droplets, Leaf, Mail, Lock } from "lucide-react";
+import { Zap, Droplets, Leaf, Mail, Lock, AlertCircle } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/hooks/use-toast";
+import { loginSchema, type LoginInput } from "@/lib/validation";
 
 export default function LoginPage() {
   const navigate = useNavigate();
@@ -18,13 +19,28 @@ export default function LoginPage() {
   const [password, setPassword] = useState("");
   const [rememberMe, setRememberMe] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
+  const [errors, setErrors] = useState<Record<string, string>>({});
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    setErrors({});
     setIsLoading(true);
 
     try {
-      await login({ email, password });
+      const formData: LoginInput = { email, password };
+      const result = loginSchema.safeParse(formData);
+
+      if (!result.success) {
+        const newErrors: Record<string, string> = {};
+        result.error.errors.forEach((error) => {
+          const path = error.path[0] as string;
+          newErrors[path] = error.message;
+        });
+        setErrors(newErrors);
+        return;
+      }
+
+      await login({ email: result.data.email, password: result.data.password });
       toast({
         title: "Éxito",
         description: "Sesión iniciada correctamente",
@@ -83,11 +99,17 @@ export default function LoginPage() {
                     placeholder="correo@ejemplo.com"
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
-                    className="pl-9 transition-colors focus-visible:ring-1"
-                    required
+                    className={`pl-9 transition-colors focus-visible:ring-1 ${
+                      errors.email ? "border-red-500" : ""
+                    }`}
                     disabled={isLoading}
                   />
                 </div>
+                {errors.email && (
+                  <p className="text-sm text-red-500 flex items-center gap-1">
+                    <AlertCircle className="w-4 h-4" /> {errors.email}
+                  </p>
+                )}
               </div>
 
               {/* Password */}
@@ -96,7 +118,7 @@ export default function LoginPage() {
                   <Label htmlFor="password" className="text-sm font-medium">
                     Contraseña
                   </Label>
-                  <a href="/forgot-password" className="text-xs font-medium text-primary hover:underline hover:text-primary/90 transition-colors">
+                  <a href="/recuperar-contraseña" className="text-xs font-medium text-primary hover:underline hover:text-primary/90 transition-colors">
                     ¿Olvidaste tu contraseña?
                   </a>
                 </div>
@@ -108,11 +130,17 @@ export default function LoginPage() {
                     placeholder="••••••••"
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
-                    className="pl-9 transition-colors focus-visible:ring-1"
-                    required
+                    className={`pl-9 transition-colors focus-visible:ring-1 ${
+                      errors.password ? "border-red-500" : ""
+                    }`}
                     disabled={isLoading}
                   />
                 </div>
+                {errors.password && (
+                  <p className="text-sm text-red-500 flex items-center gap-1">
+                    <AlertCircle className="w-4 h-4" /> {errors.password}
+                  </p>
+                )}
               </div>
 
               {/* Remember me */}
@@ -154,7 +182,7 @@ export default function LoginPage() {
             {/* Sign up link */}
             <div className="text-center text-sm text-muted-foreground">
               ¿No tienes cuenta?{" "}
-              <a href="/register" className="font-semibold text-primary hover:underline transition-colors">
+              <a href="/registro" className="font-semibold text-primary hover:underline transition-colors">
                 Regístrate aquí
               </a>
             </div>

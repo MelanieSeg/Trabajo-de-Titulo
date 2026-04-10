@@ -71,3 +71,49 @@ def decode_token(token: str) -> Optional[dict]:
         return None
     except ValidationError:
         return None
+
+
+def create_email_verification_token(user_id: int) -> str:
+    """Create an email verification token (expires in 24 hours)"""
+    now = datetime.now(timezone.utc)
+    expire = now + timedelta(hours=24)
+
+    payload = {
+        "sub": str(user_id),
+        "type": "email_verification",
+        "iat": now.timestamp(),
+        "exp": expire.timestamp(),
+        "iss": settings.jwt_issuer,
+        "aud": settings.jwt_audience,
+    }
+
+    encoded_jwt = jwt.encode(
+        payload,
+        settings.secret_key,
+        algorithm=settings.jwt_algorithm,
+    )
+    return encoded_jwt
+
+
+def verify_email_token(token: str) -> Optional[int]:
+    """
+    Verify an email verification token and return user_id if valid.
+    Returns None if token is invalid or expired.
+    """
+    try:
+        payload = jwt.decode(
+            token,
+            settings.secret_key,
+            algorithms=[settings.jwt_algorithm],
+            audience=settings.jwt_audience,
+            issuer=settings.jwt_issuer,
+        )
+
+        # Check token type
+        if payload.get("type") != "email_verification":
+            return None
+
+        user_id = int(payload.get("sub"))
+        return user_id
+    except (JWTError, ValidationError, ValueError):
+        return None

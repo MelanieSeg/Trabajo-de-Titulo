@@ -3,17 +3,39 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useState } from "react";
-import { Zap, Droplets, Leaf, Mail, ArrowLeft, CheckCircle2 } from "lucide-react";
+import { Zap, Droplets, Leaf, Mail, ArrowLeft, CheckCircle2, AlertCircle } from "lucide-react";
+import { forgotPasswordSchema, type ForgotPasswordInput } from "@/lib/validation";
 
-export default function ForgotPassword() {
+export default function RecuperarContraseña() {
   const [email, setEmail] = useState("");
   const [isSubmitted, setIsSubmitted] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
+  const [errors, setErrors] = useState<Record<string, string>>({});
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    // TODO: Conexión con API en Fase 2
-    console.log({ email });
-    setIsSubmitted(true);
+    setErrors({});
+    setIsLoading(true);
+
+    try {
+      const formData: ForgotPasswordInput = { email };
+      const result = forgotPasswordSchema.safeParse(formData);
+
+      if (!result.success) {
+        const newErrors: Record<string, string> = {};
+        result.error.errors.forEach((error) => {
+          const path = error.path[0] as string;
+          newErrors[path] = error.message;
+        });
+        setErrors(newErrors);
+        return;
+      }
+
+      // TODO: Conexión con API para enviar email de recuperación
+      setIsSubmitted(true);
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   return (
@@ -32,7 +54,7 @@ export default function ForgotPassword() {
           </div>
         </div>
 
-        {/* Card de Forgot Password */}
+        {/* Card de Recuperar Contraseña */}
         <Card className="border-border/50 shadow-lg backdrop-blur-sm bg-background/95">
           <CardHeader className="space-y-2 text-center pb-6">
             <CardTitle className="text-2xl font-bold tracking-tight text-foreground">
@@ -58,18 +80,26 @@ export default function ForgotPassword() {
                       placeholder="correo@ejemplo.com"
                       value={email}
                       onChange={(e) => setEmail(e.target.value)}
-                      className="pl-9 transition-colors focus-visible:ring-1"
-                      required
+                      className={`pl-9 transition-colors focus-visible:ring-1 ${
+                        errors.email ? "border-red-500" : ""
+                      }`}
+                      disabled={isLoading}
                     />
                   </div>
+                  {errors.email && (
+                    <p className="text-sm text-red-500 flex items-center gap-1">
+                      <AlertCircle className="w-4 h-4" /> {errors.email}
+                    </p>
+                  )}
                 </div>
 
                 {/* Submit button */}
                 <Button
                   type="submit"
                   className="w-full mt-2 font-medium shadow-sm transition-all"
+                  disabled={isLoading}
                 >
-                  Enviar instrucciones
+                  {isLoading ? "Enviando..." : "Enviar instrucciones"}
                 </Button>
               </form>
             ) : (
@@ -81,10 +111,13 @@ export default function ForgotPassword() {
                   Hemos enviado un enlace de recuperación a <br/>
                   <span className="font-medium text-foreground">{email}</span>
                 </div>
-                <Button 
-                  variant="outline" 
-                  className="w-full mt-4" 
-                  onClick={() => setIsSubmitted(false)}
+                <Button
+                  variant="outline"
+                  className="w-full mt-4"
+                  onClick={() => {
+                    setIsSubmitted(false);
+                    setEmail("");
+                  }}
                 >
                   Intentar con otro correo
                 </Button>
