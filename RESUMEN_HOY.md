@@ -16,9 +16,9 @@ Se creó el endpoint GET /api/auth/verify-email/{token} que recibe el token de v
 
 En el frontend, se creó un archivo validation.ts que utiliza Zod para validar todos los formularios de autenticación. Se crearon esquemas para loginSchema, registerSchema y forgotPasswordSchema. El registerSchema incluye validación de contraseña fuerte con el mismo patrón que el backend.
 
-Se actualizó Register.tsx completa mente. Ahora tiene dos estados: uno muestra el formulario de registro, y después de registrarse exitosamente, muestra una pantalla de verificación con el token. El usuario puede copiar el token o hacer click en verificar email. Cuando hace click en verificar email, es redirigido a la página de verificación.
+Se actualizó Registro.tsx completamente. Ahora tiene dos estados: uno muestra el formulario de registro, y después de registrarse exitosamente, muestra una pantalla de verificación con el token. El usuario puede copiar el token o hacer click en verificar email. Cuando hace click en verificar email, es redirigido a la página de verificación.
 
-Se creó una nueva página VerifyEmail.tsx que recibe el token como parámetro de URL. Esta página automáticamente verifica el email al cargar. Si la verificación es exitosa, muestra un mensaje de éxito y redirige al usuario al login en 2 segundos. Si falla, muestra un mensaje de error y ofrece opciones para reintentar o volver al login.
+Se creó una nueva página VerificarEmail.tsx que recibe el token como parámetro de URL. Esta página automáticamente verifica el email al cargar. Si la verificación es exitosa, muestra un mensaje de éxito y redirige al usuario al login en 2 segundos. Si falla, muestra un mensaje de error y ofrece opciones para reintentar o volver al login.
 
 Los formularios Login, Register y ForgotPassword en el frontend ahora usan Zod para validar entrada. Se agregó validación en tiempo real mostrando mensajes de error específicos para cada campo. El formulario de Registro incluye un indicador visual de los requisitos de contraseña con checkmarks verdes cuando se cumple cada requisito.
 
@@ -31,5 +31,3 @@ El flujo completo ahora es así. El usuario ingresa a /register y llena el formu
 En términos de seguridad, se implementó rate limiting para prevenir ataques de fuerza bruta tanto en login como en registro. Se agregaron headers de seguridad en el middleware del servidor como CSP, HSTS, X-Frame-Options, Referrer-Policy y Permissions-Policy. Se configuró un límite de 1MB en el tamaño máximo del cuerpo de las peticiones. Las contraseñas se validan con requisitos fuertes tanto en frontend como en backend. Los tokens de verificación expiran en 24 horas. El usuario no puede acceder a ninguna parte protegida hasta que verifique su email.
 
 El último usuario de prueba creado fue test@ejemplo.com con contraseña password123 que ya está verificado y activo en la base de datos para pruebas rápidas.
-
-Todo el código frontend compila sin errores. El backend también pasa validación de sintaxis Python. Los cambios están listos para ser testeados en Docker o para ser commiteados según lo requiera el desarrollador.
