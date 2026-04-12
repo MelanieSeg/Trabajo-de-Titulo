@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from sqlalchemy import inspect, select
+from sqlalchemy import inspect, select, text
 from sqlalchemy.orm import Session
 
 from app.core.config import get_settings
@@ -23,6 +23,14 @@ def init_schema() -> None:
     if "companies" in inspector.get_table_names():
         return
     Base.metadata.create_all(bind=engine)
+
+
+def run_compat_migrations(db: Session) -> None:
+    """Patch known schema drifts for existing deployments without Alembic."""
+    db.execute(text("ALTER TABLE app_users ADD COLUMN IF NOT EXISTS role VARCHAR(30) NOT NULL DEFAULT 'USER'"))
+    db.execute(text("UPDATE app_users SET role = 'USER' WHERE role IS NULL"))
+    db.execute(text("ALTER TABLE alert_configs ADD COLUMN IF NOT EXISTS notify_email BOOLEAN NOT NULL DEFAULT TRUE"))
+    db.execute(text("ALTER TABLE alert_configs ADD COLUMN IF NOT EXISTS notify_in_app BOOLEAN NOT NULL DEFAULT TRUE"))
 
 
 def ensure_defaults(db: Session) -> None:
@@ -96,9 +104,9 @@ def seed_if_empty(db: Session) -> None:
 
 def bootstrap(db: Session) -> None:
     init_schema()
+    run_compat_migrations(db)
     ensure_defaults(db)
     seed_test_user(db)
     seed_if_empty(db)
     regenerate_anomaly_alerts(db)
     add_info_alert_if_empty(db)
-

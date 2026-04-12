@@ -1,7 +1,7 @@
 from datetime import datetime
 from typing import Any, Literal, Optional
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, EmailStr, Field
 
 
 class SummaryMetric(BaseModel):
@@ -186,6 +186,25 @@ class PlatformConfigApplyResponse(BaseModel):
     cron_expression: str
     etl_enabled: bool
     alert_thresholds: dict[str, float]
+
+
+class OperationsUserCreate(BaseModel):
+    full_name: str = Field(min_length=3, max_length=120)
+    email: EmailStr
+    password: str | None = Field(default=None, min_length=8, max_length=100)
+    role: str = Field(default="USER", pattern="^[A-Z_]+$")
+    status: str = Field(default="ACTIVE", pattern="^[A-Z_]+$")
+    email_verified: bool = True
+
+
+class OperationsSettingsUpdate(BaseModel):
+    notify_email: bool | None = None
+    notify_in_app: bool | None = None
+    electricity_threshold_pct: float | None = Field(default=None, ge=1, le=100)
+    water_threshold_pct: float | None = Field(default=None, ge=1, le=100)
+    volatility_threshold_pct: float | None = Field(default=None, ge=1, le=100)
+    etl_enabled: bool | None = None
+    etl_cron_expression: str | None = None
 
 
 class APIError(BaseModel):

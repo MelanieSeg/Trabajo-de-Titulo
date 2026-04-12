@@ -1,18 +1,8 @@
-import { Gauge, TrendingUp, TrendingDown, Minus } from "lucide-react";
+import { TrendingUp, TrendingDown, Minus } from "lucide-react";
 import { DashboardLayout } from "@/components/DashboardLayout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-
-const kpis = [
-  { name: "kWh/m² mensual", value: "12.5", target: "10.0", status: "warning", trend: "up" },
-  { name: "m³/empleado mensual", value: "3.2", target: "4.0", status: "good", trend: "down" },
-  { name: "Costo energético/unidad producida", value: "$0.85", target: "$0.70", status: "critical", trend: "up" },
-  { name: "% Energía renovable", value: "35%", target: "50%", status: "warning", trend: "up" },
-  { name: "PUE (Power Usage Effectiveness)", value: "1.6", target: "1.4", status: "warning", trend: "stable" },
-  { name: "Emisiones CO₂ (Ton/mes)", value: "1.2", target: "1.5", status: "good", trend: "down" },
-  { name: "Tasa de reutilización de agua", value: "28%", target: "40%", status: "warning", trend: "up" },
-  { name: "Tiempo medio entre fallas", value: "720h", target: "500h", status: "good", trend: "stable" },
-];
+import { useOperationsOverview } from "@/hooks/useOperationsOverview";
 
 const statusColors: Record<string, string> = {
   good: "bg-green-100 text-green-800",
@@ -20,13 +10,23 @@ const statusColors: Record<string, string> = {
   critical: "bg-red-100 text-red-800",
 };
 
-const TrendIcon = ({ trend }: { trend: string }) => {
+const statusLabel: Record<string, string> = {
+  good: "Bien",
+  warning: "Alerta",
+  critical: "Crítico",
+};
+
+function TrendIcon({ trend }: { trend: string }) {
   if (trend === "up") return <TrendingUp className="h-4 w-4 text-yellow-600" />;
   if (trend === "down") return <TrendingDown className="h-4 w-4 text-green-600" />;
   return <Minus className="h-4 w-4 text-muted-foreground" />;
-};
+}
 
 export default function KPIs() {
+  const { data, isLoading, isError } = useOperationsOverview();
+
+  const kpis = data?.kpis ?? [];
+
   return (
     <DashboardLayout>
       <div className="space-y-6">
@@ -34,6 +34,10 @@ export default function KPIs() {
           <h2 className="text-xl font-bold text-foreground">Indicadores KPI</h2>
           <p className="text-sm text-muted-foreground">Key Performance Indicators del sistema energético</p>
         </div>
+
+        {isLoading && <Card className="p-4 text-sm text-muted-foreground">Cargando KPIs...</Card>}
+        {isError && <Card className="p-4 text-sm text-destructive">No se pudieron cargar los KPIs.</Card>}
+
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
           {kpis.map((kpi) => (
             <Card key={kpi.name}>
@@ -42,13 +46,18 @@ export default function KPIs() {
               </CardHeader>
               <CardContent>
                 <div className="flex items-center justify-between">
-                  <span className="text-2xl font-bold">{kpi.value}</span>
+                  <span className="text-2xl font-bold">
+                    {kpi.value.toLocaleString("es-CL", { maximumFractionDigits: 2 })}
+                    <span className="text-sm font-normal ml-1 text-muted-foreground">{kpi.unit}</span>
+                  </span>
                   <TrendIcon trend={kpi.trend} />
                 </div>
                 <div className="flex items-center justify-between mt-2">
-                  <span className="text-xs text-muted-foreground">Meta: {kpi.target}</span>
+                  <span className="text-xs text-muted-foreground">
+                    Meta: {kpi.target.toLocaleString("es-CL", { maximumFractionDigits: 2 })} {kpi.unit}
+                  </span>
                   <Badge variant="secondary" className={statusColors[kpi.status]}>
-                    {kpi.status === "good" ? "Bien" : kpi.status === "warning" ? "Alerta" : "Crítico"}
+                    {statusLabel[kpi.status]}
                   </Badge>
                 </div>
               </CardContent>

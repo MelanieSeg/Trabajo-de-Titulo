@@ -53,6 +53,7 @@ export function QuickActions() {
 
   const invalidateDashboard = () => {
     queryClient.invalidateQueries({ queryKey: ["dashboard-data"] });
+    queryClient.invalidateQueries({ queryKey: ["operations-overview"] });
   };
 
   const runAction = async (id: ActionId, task: () => Promise<void>) => {

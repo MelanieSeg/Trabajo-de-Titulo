@@ -163,6 +163,8 @@ class AlertConfig(Base):
     electricity_threshold_pct: Mapped[float] = mapped_column(Float, nullable=False, default=20.0)
     water_threshold_pct: Mapped[float] = mapped_column(Float, nullable=False, default=18.0)
     volatility_threshold_pct: Mapped[float] = mapped_column(Float, nullable=False, default=15.0)
+    notify_email: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    notify_in_app: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         server_default=func.now(),

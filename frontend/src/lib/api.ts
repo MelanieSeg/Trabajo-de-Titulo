@@ -293,11 +293,7 @@ export function runMlTraining(horizonMonths = 3): Promise<MLTrainResult> {
 }
 
 export async function exportConsumptionCsv(): Promise<Blob> {
-  const response = await fetch(`${API_BASE_URL}/export/consumption.csv`);
-  if (!response.ok) {
-    throw new Error("No se pudo exportar el CSV.");
-  }
-  return response.blob();
+  return exportBlob("/export/consumption.csv");
 }
 
 export function createCustomMetric(payload: CustomMetricPayload): Promise<{ id: number; name: string }> {
@@ -326,4 +322,274 @@ export function updateEtlSchedule(payload: ETLSchedulePayload): Promise<{ cron_e
     method: "POST",
     body: JSON.stringify(payload),
   });
+}
+
+export interface OperationsUser {
+  id: number;
+  name: string | null;
+  email: string;
+  role: string;
+  status: string;
+  email_verified: boolean;
+  initials: string;
+  last_login_at: string | null;
+  created_at: string | null;
+}
+
+export interface OperationsOverview {
+  generated_at: string;
+  summary: DashboardSummary;
+  timeseries: TimeseriesPoint[];
+  distribution: DistributionItem[];
+  efficiency: EfficiencyData;
+  electricity: {
+    cards: Array<{ label: string; value: number; unit: string; change_pct: number }>;
+    monthly: Array<{ mes: string; consumo: number; costo: number }>;
+    areas: Array<{ area: string; consumo: number; percentage: number }>;
+  };
+  water: {
+    cards: Array<{ label: string; value: number; unit: string; change_pct: number }>;
+    monthly: Array<{ mes: string; consumo: number; costo: number }>;
+    areas: Array<{ area: string; consumo: number; percentage: number }>;
+  };
+  metrics: Array<{ label: string; value: number; target: number; status: "good" | "warning" | "critical" }>;
+  kpis: Array<{
+    name: string;
+    value: number;
+    target: number;
+    unit: string;
+    progress: number;
+    status: "good" | "warning" | "critical";
+    trend: "up" | "down" | "stable";
+  }>;
+  map: Array<{
+    id: number;
+    name: string;
+    region: string | null;
+    electricity: number;
+    water: number;
+    status: string;
+    color: "default" | "secondary" | "destructive";
+  }>;
+  predictions: {
+    accuracy_pct: number;
+    projected_savings_usd: number;
+    anomaly_count: number;
+    series: Array<{
+      mes: string;
+      electricidad_real: number | null;
+      agua_real: number | null;
+      electricidad_pred: number | null;
+      agua_pred: number | null;
+    }>;
+    recommendations: Array<{ text: string; type: "high" | "medium" | "low" }>;
+  };
+  trends: {
+    series: Array<{ mes: string; electricidad: number; agua: number }>;
+    electricity_change_pct: number;
+    water_change_pct: number;
+    insights: string[];
+  };
+  anomalies: {
+    critical: number;
+    warning: number;
+    resolved: number;
+    items: Array<{
+      id: number;
+      date: string | null;
+      type: string;
+      area: string;
+      severity: AlertSeverity;
+      value: string;
+      status: string;
+      description: string;
+    }>;
+  };
+  comparisons: Array<{ periodo: string; electricidad: number; agua: number }>;
+  goals: Array<{
+    id: number | string;
+    name: string;
+    target: number;
+    current: number;
+    unit: string;
+    progress: number;
+    deadline: string | null;
+    status: string;
+  }>;
+  uploads: Array<{
+    id: number;
+    name: string;
+    date: string | null;
+    rows_processed: number;
+    rows_rejected: number;
+    status: string;
+  }>;
+  reports: Array<{
+    id: number;
+    name: string;
+    type: string;
+    date: string;
+    size: string;
+    month_label: string;
+    total_cost_usd: number;
+  }>;
+  exports: Array<{
+    id: "consumption" | "predictions" | "alerts";
+    title: string;
+    desc: string;
+    formats: string[];
+  }>;
+  database: {
+    storage_mb: number;
+    tables_active: number;
+    uptime_pct: number;
+    tables: Array<{ name: string; rows: number; size: string; status: string }>;
+  };
+  calendar: Array<{ id: string; date: string; title: string; type: string }>;
+  alerts_center: {
+    unread_count: number;
+    items: Array<{
+      id: number;
+      title: string;
+      desc: string;
+      severity: AlertSeverity;
+      date: string | null;
+      read: boolean;
+      utility: string | null;
+    }>;
+  };
+  users: OperationsUser[];
+  company: {
+    name: string;
+    industry: string | null;
+    employees: number;
+    facilities: number;
+    website: string | null;
+    plan: string;
+    license_until: string;
+    storage: string;
+  };
+  settings: {
+    notify_email: boolean;
+    notify_in_app: boolean;
+    electricity_threshold_pct: number;
+    water_threshold_pct: number;
+    volatility_threshold_pct: number;
+    etl_enabled: boolean;
+    etl_cron_expression: string;
+  };
+  security: {
+    sessions: Array<{ device: string; ip: string; date: string | null; current: boolean }>;
+    audit: Array<{ action: string; user: string; date: string | null }>;
+  };
+}
+
+export interface CreateOperationsUserPayload {
+  full_name: string;
+  email: string;
+  password?: string;
+  role: string;
+  status: string;
+  email_verified?: boolean;
+}
+
+export interface UpdateOperationsSettingsPayload {
+  notify_email?: boolean;
+  notify_in_app?: boolean;
+  electricity_threshold_pct?: number;
+  water_threshold_pct?: number;
+  volatility_threshold_pct?: number;
+  etl_enabled?: boolean;
+  etl_cron_expression?: string;
+}
+
+export function fetchOperationsOverview(): Promise<OperationsOverview> {
+  return request<OperationsOverview>("/operations/overview");
+}
+
+export function resolveAlert(alertId: number): Promise<{ id: number; resolved: boolean; title: string }> {
+  return request<{ id: number; resolved: boolean; title: string }>(`/operations/alerts/${alertId}/resolve`, {
+    method: "POST",
+  });
+}
+
+export function resolveAllAlerts(): Promise<{ resolved: number }> {
+  return request<{ resolved: number }>("/operations/alerts/resolve-all", {
+    method: "POST",
+  });
+}
+
+export function createOperationsUser(payload: CreateOperationsUserPayload): Promise<{
+  id: number;
+  email: string;
+  full_name: string;
+  role: string;
+  status: string;
+  email_verified: boolean;
+  temporary_password: string | null;
+  created_at: string;
+}> {
+  return request("/operations/users", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export function updateOperationsSettings(
+  payload: UpdateOperationsSettingsPayload
+): Promise<OperationsOverview["settings"]> {
+  return request<OperationsOverview["settings"]>("/operations/settings", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+async function exportBlob(path: string): Promise<Blob> {
+  const token = getToken();
+  const headers = new Headers();
+  if (token) {
+    headers.set("Authorization", `Bearer ${token}`);
+  }
+
+  const response = await fetch(`${API_BASE_URL}${path}`, { headers });
+  if (!response.ok) {
+    throw new Error("No se pudo exportar el archivo.");
+  }
+  return response.blob();
+}
+
+export async function exportPredictionsCsv(): Promise<Blob> {
+  const overview = await fetchOperationsOverview();
+  const rows = overview.predictions.series.map((item) => ({
+    mes: item.mes,
+    electricidad_real: item.electricidad_real ?? "",
+    agua_real: item.agua_real ?? "",
+    electricidad_pred: item.electricidad_pred ?? "",
+    agua_pred: item.agua_pred ?? "",
+  }));
+  const header = ["mes", "electricidad_real", "agua_real", "electricidad_pred", "agua_pred"];
+  const csvBody = [
+    header.join(","),
+    ...rows.map((row) => header.map((col) => String(row[col as keyof typeof row])).join(",")),
+  ].join("\n");
+  return new Blob([csvBody], { type: "text/csv;charset=utf-8;" });
+}
+
+export async function exportAlertsCsv(): Promise<Blob> {
+  const overview = await fetchOperationsOverview();
+  const header = ["id", "titulo", "severidad", "estado", "fecha", "descripcion"];
+  const lines = overview.alerts_center.items.map((item) =>
+    [item.id, item.title, item.severity, item.read ? "resuelta" : "abierta", item.date ?? "", item.desc.replaceAll(",", " ")].join(",")
+  );
+  return new Blob([[header.join(","), ...lines].join("\n")], { type: "text/csv;charset=utf-8;" });
+}
+
+export async function exportConsumptionJson(): Promise<Blob> {
+  const overview = await fetchOperationsOverview();
+  return new Blob([JSON.stringify(overview.timeseries, null, 2)], { type: "application/json" });
+}
+
+export async function exportPredictionsJson(): Promise<Blob> {
+  const overview = await fetchOperationsOverview();
+  return new Blob([JSON.stringify(overview.predictions.series, null, 2)], { type: "application/json" });
 }

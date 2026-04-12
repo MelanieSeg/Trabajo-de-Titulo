@@ -2,17 +2,21 @@ import { BarChart3, Zap, Droplets, DollarSign, Leaf, Activity } from "lucide-rea
 import { DashboardLayout } from "@/components/DashboardLayout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
+import { useOperationsOverview } from "@/hooks/useOperationsOverview";
 
-const metrics = [
-  { label: "Eficiencia Energética", value: 82, target: 90, icon: Zap, color: "bg-yellow-500" },
-  { label: "Eficiencia Hídrica", value: 76, target: 85, icon: Droplets, color: "bg-blue-500" },
-  { label: "Reducción de Costos", value: 65, target: 80, icon: DollarSign, color: "bg-red-500" },
-  { label: "Huella de Carbono", value: 71, target: 75, icon: Leaf, color: "bg-green-500" },
-  { label: "Rendimiento General", value: 78, target: 85, icon: Activity, color: "bg-purple-500" },
-  { label: "Cumplimiento Normativo", value: 92, target: 95, icon: BarChart3, color: "bg-indigo-500" },
-];
+const iconMap: Record<string, typeof Zap> = {
+  Electricidad: Zap,
+  Agua: Droplets,
+  "Costo Total": DollarSign,
+  "Huella de Carbono": Leaf,
+  "Eficiencia General": Activity,
+};
 
 export default function Metricas() {
+  const { data, isLoading, isError } = useOperationsOverview();
+
+  const metrics = data?.metrics ?? [];
+
   return (
     <DashboardLayout>
       <div className="space-y-6">
@@ -20,26 +24,33 @@ export default function Metricas() {
           <h2 className="text-xl font-bold text-foreground">Métricas Generales</h2>
           <p className="text-sm text-muted-foreground">Indicadores clave de rendimiento energético</p>
         </div>
+
+        {isLoading && <Card className="p-4 text-sm text-muted-foreground">Cargando métricas...</Card>}
+        {isError && <Card className="p-4 text-sm text-destructive">No se pudieron cargar métricas.</Card>}
+
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-          {metrics.map((m) => (
-            <Card key={m.label}>
-              <CardHeader className="pb-2">
-                <div className="flex items-center gap-2">
-                  <div className={`h-8 w-8 rounded-lg ${m.color}/10 flex items-center justify-center`}>
-                    <m.icon className="h-4 w-4 text-primary" />
+          {metrics.map((metric) => {
+            const Icon = iconMap[metric.label] ?? BarChart3;
+            return (
+              <Card key={metric.label}>
+                <CardHeader className="pb-2">
+                  <div className="flex items-center gap-2">
+                    <div className="h-8 w-8 rounded-lg bg-primary/10 flex items-center justify-center">
+                      <Icon className="h-4 w-4 text-primary" />
+                    </div>
+                    <CardTitle className="text-sm">{metric.label}</CardTitle>
                   </div>
-                  <CardTitle className="text-sm">{m.label}</CardTitle>
-                </div>
-              </CardHeader>
-              <CardContent>
-                <div className="flex items-end justify-between mb-2">
-                  <span className="text-2xl font-bold">{m.value}%</span>
-                  <span className="text-xs text-muted-foreground">Meta: {m.target}%</span>
-                </div>
-                <Progress value={m.value} className="h-2" />
-              </CardContent>
-            </Card>
-          ))}
+                </CardHeader>
+                <CardContent>
+                  <div className="flex items-end justify-between mb-2">
+                    <span className="text-2xl font-bold">{metric.value.toFixed(1)}%</span>
+                    <span className="text-xs text-muted-foreground">Meta: {metric.target.toFixed(1)}%</span>
+                  </div>
+                  <Progress value={metric.value} className="h-2" />
+                </CardContent>
+              </Card>
+            );
+          })}
         </div>
       </div>
     </DashboardLayout>
