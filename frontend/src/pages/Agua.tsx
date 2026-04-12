@@ -9,6 +9,10 @@ const chartConfig = {
   consumo: { label: "Consumo (m³)", color: "hsl(var(--chart-2))" },
 };
 
+const axisStroke = "hsl(var(--muted-foreground))";
+const gridStroke = "hsl(var(--border))";
+const tickStyle = { fill: "hsl(var(--foreground))", fontSize: 12 };
+
 export default function Agua() {
   const { data, isLoading, isError } = useOperationsOverview();
 
@@ -61,9 +65,9 @@ export default function Agua() {
             <CardContent>
               <ChartContainer config={chartConfig} className="h-[300px] w-full">
                 <AreaChart data={monthlyData}>
-                  <CartesianGrid strokeDasharray="3 3" />
-                  <XAxis dataKey="mes" />
-                  <YAxis />
+                  <CartesianGrid strokeDasharray="3 3" stroke={gridStroke} />
+                  <XAxis dataKey="mes" stroke={axisStroke} tick={tickStyle} tickLine={{ stroke: axisStroke }} />
+                  <YAxis stroke={axisStroke} tick={tickStyle} tickLine={{ stroke: axisStroke }} />
                   <ChartTooltip content={<ChartTooltipContent />} />
                   <Area
                     type="monotone"
@@ -84,9 +88,9 @@ export default function Agua() {
             <CardContent>
               <ChartContainer config={chartConfig} className="h-[300px] w-full">
                 <BarChart data={areaData}>
-                  <CartesianGrid strokeDasharray="3 3" />
-                  <XAxis dataKey="area" />
-                  <YAxis />
+                  <CartesianGrid strokeDasharray="3 3" stroke={gridStroke} />
+                  <XAxis dataKey="area" stroke={axisStroke} tick={tickStyle} tickLine={{ stroke: axisStroke }} />
+                  <YAxis stroke={axisStroke} tick={tickStyle} tickLine={{ stroke: axisStroke }} />
                   <ChartTooltip content={<ChartTooltipContent />} />
                   <Bar dataKey="consumo" fill="var(--color-consumo)" radius={[4, 4, 0, 0]} />
                 </BarChart>
