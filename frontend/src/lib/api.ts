@@ -324,6 +324,12 @@ export function updateEtlSchedule(payload: ETLSchedulePayload): Promise<{ cron_e
   });
 }
 
+export function runSampleEtl(): Promise<ETLUploadResult> {
+  return request<ETLUploadResult>("/etl/run-sample", {
+    method: "POST",
+  });
+}
+
 export interface OperationsUser {
   id: number;
   name: string | null;
