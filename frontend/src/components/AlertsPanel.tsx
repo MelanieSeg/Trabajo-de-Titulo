@@ -1,4 +1,5 @@
 import { AlertTriangle, TrendingUp, Droplets, Zap, ArrowRight } from "lucide-react";
+import { useNavigate } from "react-router-dom";
 
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -43,11 +44,18 @@ function resolveIcon(alert: AlertItem) {
 }
 
 export function AlertsPanel({ alerts }: AlertsPanelProps) {
+  const navigate = useNavigate();
+
   return (
     <Card className="glass-card p-5">
       <div className="flex items-center justify-between mb-4">
         <h3 className="text-sm font-semibold text-foreground">Alertas Inteligentes</h3>
-        <Button variant="ghost" size="sm" className="text-xs text-primary hover:text-primary">
+        <Button
+          variant="ghost"
+          size="sm"
+          className="text-xs text-primary hover:text-primary"
+          onClick={() => navigate("/alertas")}
+        >
           Ver todas <ArrowRight className="h-3 w-3 ml-1" />
         </Button>
       </div>
