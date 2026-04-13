@@ -9,7 +9,16 @@ class Settings(BaseSettings):
     app_version: str = "1.0.0"
 
     database_url: str = "postgresql+psycopg2://eco_user:eco_pass@db:5432/eco_energy"
-    cors_origins: str = "http://localhost:8080,http://127.0.0.1:8080"
+    cors_origins: str = (
+        "http://localhost:8080,http://127.0.0.1:8080,"
+        "http://localhost:8081,http://127.0.0.1:8081,"
+        "https://localhost:8080,https://127.0.0.1:8080,"
+        "https://localhost:8081,https://127.0.0.1:8081"
+    )
+    cors_origin_regex: str | None = r"^https?://(localhost|127\.0\.0\.1)(:\d+)?$"
+    cors_methods: str = "GET,POST,PUT,PATCH,DELETE,OPTIONS"
+    cors_headers: str = "Authorization,Content-Type,Accept,Origin,X-Requested-With"
+    cors_expose_headers: str = "Content-Length,Content-Type"
 
     etl_upload_dir: str = "/app/data/uploads"
     sample_csv_path: str = "/app/data/raw/sample_consumption.csv"

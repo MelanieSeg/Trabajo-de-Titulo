@@ -42,7 +42,7 @@ services:
     env_file:
       - ./db/credentials.env
     environment:
-      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:8081,http://127.0.0.1:8081}
+      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:8081,http://127.0.0.1:8081,https://localhost:8081,https://127.0.0.1:8081}
       ETL_UPLOAD_DIR: ${ETL_UPLOAD_DIR:-/app/data/uploads}
       SAMPLE_CSV_PATH: ${SAMPLE_CSV_PATH:-/app/data/raw/sample_consumption.csv}
       PLATFORM_CONFIG_PATH: ${PLATFORM_CONFIG_PATH:-/opt/ecoenergy/app/platform-config.json}

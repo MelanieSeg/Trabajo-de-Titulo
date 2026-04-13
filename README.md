@@ -104,13 +104,36 @@ cp .env.example .env
 cp db/credentials.env.example db/credentials.env
 ```
 
-### 8.2 Levantar entorno
+### 8.2 Desarrollo local con HTTPS (SSL)
+
+Para levantar el frontend en HTTPS local (certificado autofirmado) y mantener conexión estable con backend:
+
+```bash
+# 1) Generar certificado local (una sola vez)
+cd frontend
+npm run cert:generate
+
+# 2) Levantar backend + db (en raíz del repo)
+cd ..
+docker compose up -d db db-init backend
+
+# 3) Levantar frontend HTTPS
+cd frontend
+npm run dev:https
+```
+
+URL frontend HTTPS local:
+
+- `https://localhost:8081`
+- `https://127.0.0.1:8081`
+
+### 8.3 Levantar entorno completo en Docker
 
 ```bash
 docker compose up --build
 ```
 
-### 8.3 URLs por defecto
+### 8.4 URLs por defecto
 
 - Frontend: `http://localhost:8080`
 - Backend docs: `http://localhost:8000/docs`

@@ -5,6 +5,8 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "dev:https": "npm run cert:generate && DEV_HTTPS=true vite",
+    "cert:generate": "bash ./scripts/generate-local-cert.sh",
     "build": "vite build",
     "build:dev": "vite build --mode development",
     "lint": "eslint .",

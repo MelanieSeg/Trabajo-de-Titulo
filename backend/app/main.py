@@ -17,6 +17,10 @@ from app.services.bootstrap_service import bootstrap
 
 settings = get_settings()
 
+
+def split_csv(value: str) -> list[str]:
+    return [item.strip() for item in value.split(",") if item.strip()]
+
 # Middleware para límite de carga
 class LimitUploadMiddleware(BaseHTTPMiddleware):
     MAX_BODY_SIZE = 1 * 1024 * 1024  # 1 MB en bytes
@@ -98,13 +102,19 @@ app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 app.add_middleware(SecurityHeadersMiddleware)
 app.add_middleware(LimitUploadMiddleware)
 
-origins = [origin.strip() for origin in settings.cors_origins.split(",") if origin.strip()]
+origins = split_csv(settings.cors_origins)
+methods = split_csv(settings.cors_methods) or ["*"]
+headers = split_csv(settings.cors_headers) or ["*"]
+expose_headers = split_csv(settings.cors_expose_headers)
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=origins or ["*"],
+    allow_origins=origins,
+    allow_origin_regex=settings.cors_origin_regex,
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=methods,
+    allow_headers=headers,
+    expose_headers=expose_headers,
 )
 
 app.include_router(api_router)
