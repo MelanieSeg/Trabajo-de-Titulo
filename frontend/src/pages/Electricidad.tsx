@@ -6,8 +6,20 @@ import { AreaChart, Area, XAxis, YAxis, CartesianGrid, BarChart, Bar } from "rec
 import { useOperationsOverview } from "@/hooks/useOperationsOverview";
 
 const chartConfig = {
-  consumo: { label: "Consumo (kWh)", color: "hsl(var(--chart-1))" },
-  costo: { label: "Costo (USD)", color: "hsl(var(--chart-2))" },
+  consumo: {
+    label: "Consumo (kWh)",
+    theme: {
+      light: "hsl(0 0% 12%)",
+      dark: "hsl(0 0% 96%)",
+    },
+  },
+  costo: {
+    label: "Costo (USD)",
+    theme: {
+      light: "hsl(0 0% 12%)",
+      dark: "hsl(0 0% 96%)",
+    },
+  },
 };
 
 const axisStroke = "hsl(var(--muted-foreground))";

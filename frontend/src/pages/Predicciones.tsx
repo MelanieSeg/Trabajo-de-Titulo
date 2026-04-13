@@ -1,8 +1,7 @@
 import { Brain, TrendingUp, AlertTriangle, CheckCircle, Loader2 } from "lucide-react";
 import { DashboardLayout } from "@/components/DashboardLayout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { ChartContainer, ChartTooltip, ChartTooltipContent } from "@/components/ui/chart";
-import { LineChart, Line, XAxis, YAxis, CartesianGrid } from "recharts";
+import { ConsumptionChart } from "@/components/ConsumptionChart";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { useOperationsOverview } from "@/hooks/useOperationsOverview";
@@ -11,17 +10,12 @@ import { useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 
-const chartConfig = {
-  electricidad_real: { label: "Real (kWh)", color: "hsl(var(--chart-1))" },
-  electricidad_pred: { label: "Predicción ML", color: "hsl(var(--chart-3))" },
-};
-
 export default function Predicciones() {
   const { data, isLoading, isError } = useOperationsOverview();
   const [training, setTraining] = useState(false);
   const queryClient = useQueryClient();
 
-  const predictionData = data?.predictions.series ?? [];
+  const chartData = data?.timeseries ?? [];
   const recommendations = data?.predictions.recommendations ?? [];
 
   const retrainModel = async () => {
@@ -79,30 +73,7 @@ export default function Predicciones() {
           </Card>
         </div>
 
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-base">Pronóstico de Consumo Eléctrico</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <ChartContainer config={chartConfig} className="h-[300px] w-full">
-              <LineChart data={predictionData}>
-                <CartesianGrid strokeDasharray="3 3" />
-                <XAxis dataKey="mes" />
-                <YAxis />
-                <ChartTooltip content={<ChartTooltipContent />} />
-                <Line type="monotone" dataKey="electricidad_real" stroke="var(--color-electricidad_real)" strokeWidth={2} connectNulls={false} />
-                <Line
-                  type="monotone"
-                  dataKey="electricidad_pred"
-                  stroke="var(--color-electricidad_pred)"
-                  strokeWidth={2}
-                  strokeDasharray="5 5"
-                  connectNulls
-                />
-              </LineChart>
-            </ChartContainer>
-          </CardContent>
-        </Card>
+        <ConsumptionChart data={chartData} />
 
         <Card>
           <CardHeader>
