@@ -3,6 +3,8 @@ import { DashboardLayout } from "@/components/DashboardLayout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { ChartContainer, ChartTooltip, ChartTooltipContent } from "@/components/ui/chart";
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, BarChart, Bar } from "recharts";
+import { useState } from "react";
+import { DateRangeFilter } from "@/components/DateRangeFilter";
 import { useOperationsOverview } from "@/hooks/useOperationsOverview";
 
 const chartConfig = {
@@ -27,7 +29,8 @@ const gridStroke = "hsl(var(--border))";
 const tickStyle = { fill: "hsl(var(--foreground))", fontSize: 12 };
 
 export default function Electricidad() {
-  const { data, isLoading, isError } = useOperationsOverview();
+  const [months, setMonths] = useState(12);
+  const { data, isLoading, isError } = useOperationsOverview(months);
 
   const cards = data?.electricity.cards ?? [];
   const monthlyData = data?.electricity.monthly ?? [];
@@ -40,6 +43,8 @@ export default function Electricidad() {
           <h2 className="text-xl font-bold text-foreground">Consumo Eléctrico</h2>
           <p className="text-sm text-muted-foreground">Análisis detallado del consumo de electricidad</p>
         </div>
+
+        <DateRangeFilter selectedMonths={months} onMonthsChange={setMonths} />
 
         {isLoading && <Card className="p-4 text-sm text-muted-foreground">Cargando datos reales...</Card>}
         {isError && <Card className="p-4 text-sm text-destructive">No se pudo cargar la vista eléctrica.</Card>}

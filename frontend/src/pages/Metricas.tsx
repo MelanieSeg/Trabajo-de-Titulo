@@ -2,7 +2,9 @@ import { BarChart3, Zap, Droplets, DollarSign, Leaf, Activity } from "lucide-rea
 import { DashboardLayout } from "@/components/DashboardLayout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
+import { DateRangeFilter } from "@/components/DateRangeFilter";
 import { useOperationsOverview } from "@/hooks/useOperationsOverview";
+import { useState } from "react";
 
 const iconMap: Record<string, typeof Zap> = {
   Electricidad: Zap,
@@ -13,7 +15,8 @@ const iconMap: Record<string, typeof Zap> = {
 };
 
 export default function Metricas() {
-  const { data, isLoading, isError } = useOperationsOverview();
+  const [months, setMonths] = useState(12);
+  const { data, isLoading, isError } = useOperationsOverview(months);
 
   const metrics = data?.metrics ?? [];
 
@@ -24,6 +27,8 @@ export default function Metricas() {
           <h2 className="text-xl font-bold text-foreground">Métricas Generales</h2>
           <p className="text-sm text-muted-foreground">Indicadores clave de rendimiento energético</p>
         </div>
+
+        <DateRangeFilter selectedMonths={months} onMonthsChange={setMonths} />
 
         {isLoading && <Card className="p-4 text-sm text-muted-foreground">Cargando métricas...</Card>}
         {isError && <Card className="p-4 text-sm text-destructive">No se pudieron cargar métricas.</Card>}

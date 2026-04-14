@@ -1,6 +1,6 @@
 from typing import Any
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
 
 from app.api.deps import get_db_session
@@ -11,8 +11,11 @@ router = APIRouter(prefix="/operations", tags=["operations"])
 
 
 @router.get("/overview", response_model=dict[str, Any])
-def operations_overview(db: Session = Depends(get_db_session)) -> dict[str, Any]:
-    return operations_service.get_operations_overview(db)
+def operations_overview(
+    months: int = Query(default=12, ge=3, le=36),
+    db: Session = Depends(get_db_session),
+) -> dict[str, Any]:
+    return operations_service.get_operations_overview(db, months=months)
 
 
 @router.post("/alerts/{alert_id}/resolve", response_model=dict[str, Any])

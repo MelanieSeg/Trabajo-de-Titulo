@@ -509,8 +509,8 @@ export interface UpdateOperationsSettingsPayload {
   etl_cron_expression?: string;
 }
 
-export function fetchOperationsOverview(): Promise<OperationsOverview> {
-  return request<OperationsOverview>("/operations/overview");
+export function fetchOperationsOverview(months: number = 12): Promise<OperationsOverview> {
+  return request<OperationsOverview>(`/operations/overview?months=${months}`);
 }
 
 export function resolveAlert(alertId: number): Promise<{ id: number; resolved: boolean; title: string }> {

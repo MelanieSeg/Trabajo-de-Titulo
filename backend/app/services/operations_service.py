@@ -58,7 +58,7 @@ def _status_from_progress(progress_pct: float) -> str:
     return "critical"
 
 
-def _monthly_aggregates(db: Session) -> list[dict[str, Any]]:
+def _monthly_aggregates(db: Session, months: int = 12) -> list[dict[str, Any]]:
     stmt = (
         select(
             MonthlyConsumption.year.label("year"),
@@ -76,6 +76,11 @@ def _monthly_aggregates(db: Session) -> list[dict[str, Any]]:
 
     rows = db.execute(stmt).all()
     result = []
+
+    # Limitar a los últimos N meses
+    if len(rows) > months:
+        rows = rows[-months:]
+
     for row in rows:
         result.append(
             {
@@ -886,8 +891,8 @@ def _build_security(db: Session) -> dict[str, Any]:
     }
 
 
-def get_operations_overview(db: Session) -> dict[str, Any]:
-    monthly = _monthly_aggregates(db)
+def get_operations_overview(db: Session, months: int = 12) -> dict[str, Any]:
+    monthly = _monthly_aggregates(db, months=months)
     latest, _ = _latest_pair(monthly)
     latest_year = int(latest["year"]) if latest else datetime.now(timezone.utc).year
     latest_month = int(latest["month"]) if latest else datetime.now(timezone.utc).month
@@ -921,7 +926,7 @@ def get_operations_overview(db: Session) -> dict[str, Any]:
         "generated_at": datetime.now(timezone.utc).isoformat(),
         "summary": get_summary(db).model_dump(),
         "distribution": [item.model_dump() for item in get_distribution(db)],
-        "timeseries": [item.model_dump() for item in get_timeseries(db, months=12)],
+        "timeseries": [item.model_dump() for item in get_timeseries(db, months=months)],
         "efficiency": efficiency.model_dump(),
         "electricity": electricity,
         "water": water,
