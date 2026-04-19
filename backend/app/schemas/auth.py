@@ -5,13 +5,13 @@ from pydantic import BaseModel, EmailStr, Field, field_validator
 
 
 class LoginRequest(BaseModel):
-    """Login request schema with email and password validation"""
+    """Esquema de solicitud de login con validación de email y contraseña"""
     email: EmailStr
     password: str = Field(min_length=1, max_length=255)
 
 
 class RegisterRequest(BaseModel):
-    """Register request schema with strong password validation"""
+    """Esquema de solicitud de registro con validación de contraseña fuerte"""
     full_name: str = Field(min_length=3, max_length=100)
     email: EmailStr
     password: str = Field(min_length=8, max_length=100)
@@ -20,13 +20,13 @@ class RegisterRequest(BaseModel):
     @classmethod
     def validate_password_strength(cls, v: str) -> str:
         """
-        Validate password requirements:
-        - Minimum 8 characters
-        - Maximum 100 characters
-        - At least one uppercase letter (A-Z)
-        - At least one lowercase letter (a-z)
-        - At least one digit (0-9)
-        - At least one special character (!@#$%^&*()_+-=[]{}|;:,.<>?)
+        Validar requisitos de contraseña:
+        - Mínimo 8 caracteres
+        - Máximo 100 caracteres
+        - Al menos una letra mayúscula (A-Z)
+        - Al menos una letra minúscula (a-z)
+        - Al menos un dígito (0-9)
+        - Al menos un carácter especial (!@#$%^&*()_+-=[]{}|;:,.<>?)
         """
         if not any(c.isupper() for c in v):
             raise ValueError("La contraseña debe contener al menos una mayúscula (A-Z)")
@@ -45,14 +45,14 @@ class RegisterRequest(BaseModel):
 
 
 class LoginResponse(BaseModel):
-    """Login response schema with JWT token"""
+    """Esquema de respuesta de login con token JWT"""
     access_token: str
     token_type: str = "bearer"
     user: "UserResponse"
 
 
 class RegisterResponse(BaseModel):
-    """Register response schema"""
+    """Esquema de respuesta de registro"""
     id: int
     email: str
     full_name: str
@@ -63,7 +63,7 @@ class RegisterResponse(BaseModel):
 
 
 class VerifyEmailResponse(BaseModel):
-    """Email verification response schema"""
+    """Esquema de respuesta de verificación de email"""
     message: str
     user_id: int
     email: str
@@ -71,7 +71,7 @@ class VerifyEmailResponse(BaseModel):
 
 
 class UserResponse(BaseModel):
-    """User response schema for API responses"""
+    """Esquema de respuesta de usuario para respuestas de API"""
     id: int
     email: str
     full_name: Optional[str]
@@ -83,7 +83,7 @@ class UserResponse(BaseModel):
 
 
 class TokenData(BaseModel):
-    """Token payload data for JWT"""
+    """Datos de carga del token para JWT"""
     sub: int  # user_id
     email: str
     role: str
@@ -93,18 +93,18 @@ class TokenData(BaseModel):
 
 
 class ForgotPasswordRequest(BaseModel):
-    """Forgot password request schema"""
+    """Esquema de solicitud de contraseña olvidada"""
     email: EmailStr
 
 
 class ForgotPasswordResponse(BaseModel):
-    """Forgot password response schema"""
+    """Esquema de respuesta de contraseña olvidada"""
     message: str
     email: str
 
 
 class ResetPasswordRequest(BaseModel):
-    """Reset password request schema with strong password validation"""
+    """Esquema de solicitud de restablecimiento de contraseña con validación de contraseña fuerte"""
     token: str = Field(min_length=1, max_length=1000)
     password: str = Field(min_length=8, max_length=100)
 
@@ -112,13 +112,13 @@ class ResetPasswordRequest(BaseModel):
     @classmethod
     def validate_password_strength(cls, v: str) -> str:
         """
-        Validate password requirements:
-        - Minimum 8 characters
-        - Maximum 100 characters
-        - At least one uppercase letter (A-Z)
-        - At least one lowercase letter (a-z)
-        - At least one digit (0-9)
-        - At least one special character (!@#$%^&*()_+-=[]{}|;:,.<>?)
+        Validar requisitos de contraseña:
+        - Mínimo 8 caracteres
+        - Máximo 100 caracteres
+        - Al menos una letra mayúscula (A-Z)
+        - Al menos una letra minúscula (a-z)
+        - Al menos un dígito (0-9)
+        - Al menos un carácter especial (!@#$%^&*()_+-=[]{}|;:,.<>?)
         """
         if not any(c.isupper() for c in v):
             raise ValueError("La contraseña debe contener al menos una mayúscula (A-Z)")
@@ -137,6 +137,6 @@ class ResetPasswordRequest(BaseModel):
 
 
 class ResetPasswordResponse(BaseModel):
-    """Reset password response schema"""
+    """Esquema de respuesta de restablecimiento de contraseña"""
     message: str
     email: str

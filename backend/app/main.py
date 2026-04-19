@@ -94,7 +94,7 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-# Set up rate limiter
+# Configurar limitador de velocidad
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 

@@ -51,10 +51,10 @@ def login(
     - User email is verified
     - User status is ACTIVE
     """
-    # Normalize email (lowercase and strip whitespace)
+    # Normalizar email (convertir a minúsculas y eliminar espacios)
     email = credentials.email.lower().strip()
 
-    # Find user by email
+    # Buscar usuario por email
     user = db.query(User).filter(User.email == email).first()
 
     if not user:
@@ -63,46 +63,46 @@ def login(
             detail="Email o contraseña inválidos",
         )
 
-    # Verify password
+    # Verificar contraseña
     if not verify_password(credentials.password, user.password_hash):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Email o contraseña inválidos",
         )
 
-    # Check if email is verified
+    # Verificar si el email está confirmado
     if not user.email_verified:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Tu email no ha sido verificado. Por favor, revisa tu bandeja de entrada.",
         )
 
-    # Check user status
+    # Verificar estado de la cuenta
     if user.status != "ACTIVE":
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail=f"Tu cuenta está {user.status.lower()}. Contacta al administrador.",
         )
 
-    # Check if user must change password
+    # Verificar si el usuario debe cambiar la contraseña
     if user.must_change_password:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Debes cambiar tu contraseña antes de continuar.",
         )
 
-    # Update last login
+    # Actualizar último login
     user.last_login_at = datetime.now(timezone.utc)
     db.commit()
 
-    # Create access token
+    # Crear token de acceso
     access_token = create_access_token(
         user_id=user.id,
         email=user.email,
         role=user.role,
     )
 
-    # Prepare user response (exclude sensitive data)
+    # Preparar respuesta de usuario (excluir datos sensibles)
     user_response = UserResponse(
         id=user.id,
         email=user.email,
@@ -142,10 +142,10 @@ def register(
       * At least one digit
       * At least one special character
     """
-    # Normalize email
+    # Normalizar email
     email = payload.email.lower().strip()
 
-    # Check if user already exists
+    # Verificar si el usuario ya existe
     existing_user = db.query(User).filter(User.email == email).first()
     if existing_user:
         raise HTTPException(
@@ -153,16 +153,16 @@ def register(
             detail="Este correo ya está registrado",
         )
 
-    # Hash password
+    # Hashear contraseña
     password_hash = hash_password(payload.password)
 
-    # Create new user (default: email_verified=False, status=INACTIVE, role=USER)
+    # Crear nuevo usuario (por defecto: email_verified=False, status=INACTIVE, role=USER)
     new_user = User(
         email=email,
         password_hash=password_hash,
         full_name=payload.full_name,
-        email_verified=False,  # Email verification required
-        status="INACTIVE",  # User must verify email first
+        email_verified=False,  # Se requiere verificación de email
+        status="INACTIVE",  # El usuario debe verificar el email primero
         role="USER",
         must_change_password=False,
         is_active=True,
@@ -179,7 +179,7 @@ def register(
             detail="Error al crear la cuenta",
         ) from e
 
-    # Generate email verification token
+    # Generar token de verificación de email
     verification_token = create_email_verification_token(new_user.id)
 
     return RegisterResponse(
@@ -206,7 +206,7 @@ def verify_email(token: str, db: Session = Depends(get_db)):
     - 400 Bad Request if token is invalid or expired
     - 404 Not Found if user not found
     """
-    # Verify token and get user_id
+    # Verificar token y obtener user_id
     user_id = verify_email_token(token)
 
     if user_id is None:
@@ -215,7 +215,7 @@ def verify_email(token: str, db: Session = Depends(get_db)):
             detail="Token de verificación inválido o expirado",
         )
 
-    # Find user
+    # Buscar usuario
     user = db.query(User).filter(User.id == user_id).first()
 
     if not user:
@@ -224,14 +224,14 @@ def verify_email(token: str, db: Session = Depends(get_db)):
             detail="Usuario no encontrado",
         )
 
-    # Already verified?
+    # ¿Ya verificado?
     if user.email_verified:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Este email ya ha sido verificado",
         )
 
-    # Activate user
+    # Activar usuario
     user.email_verified = True
     user.status = "ACTIVE"
     db.commit()
@@ -262,30 +262,30 @@ def forgot_password(
     Returns:
     - Success message (for security, always returns success even if email not found)
     """
-    # Normalize email
+    # Normalizar email
     email = payload.email.lower().strip()
 
-    # Find user by email
+    # Buscar usuario por email
     user = db.query(User).filter(User.email == email).first()
 
-    # For security, always return success (don't reveal if email exists)
+    # Por seguridad, siempre devolver éxito (no revelar si el email existe)
     if not user:
         return ForgotPasswordResponse(
             message="Si tu correo está registrado, recibirás un enlace para recuperar tu contraseña.",
             email=email,
         )
 
-    # Generate reset token
+    # Generar token de reset
     reset_token = create_password_reset_token(user.id, user.email)
 
-    # Send email with reset link (uses configurable frontend_url from settings)
+    # Enviar email con enlace de reset (usa URL configurable del frontend)
     email_sent = send_password_reset_email(
         recipient_email=user.email,
         reset_token=reset_token,
     )
 
     if not email_sent:
-        # Log but don't expose email service failure to client
+        # Registrar pero no exponer fallo del servicio de email al cliente
         pass
 
     return ForgotPasswordResponse(
@@ -321,10 +321,10 @@ def reset_password(
     - ✅ Password strength validation
     - ✅ Audit logging for all attempts
     """
-    # Get client IP for logging and rate limiting
+    # Obtener IP del cliente para registrar y aplicar límite de velocidad
     client_ip = request.client.host if request.client else None
 
-    # Verify token
+    # Verificar token
     token_data = verify_password_reset_token(payload.token)
 
     if token_data is None:
@@ -342,7 +342,7 @@ def reset_password(
     user_id = token_data["user_id"]
     email = token_data["email"]
 
-    # Find user
+    # Buscar usuario
     user = db.query(User).filter(User.id == user_id).first()
 
     if not user:
@@ -358,7 +358,7 @@ def reset_password(
             detail="Usuario no encontrado",
         )
 
-    # Verify email matches for extra security
+    # Verificar que el email coincida (seguridad extra)
     if user.email.lower() != email.lower():
         # 📝 Log failed attempt
         AuditLogger.log_invalid_reset_attempt(
@@ -372,10 +372,10 @@ def reset_password(
             detail="Token de recuperación inválido",
         )
 
-    # Hash new password
+    # Hashear nueva contraseña
     password_hash = hash_password(payload.password)
 
-    # Update password and clear must_change_password flag if set
+    # Actualizar contraseña y limpiar bandera must_change_password si está establecida
     user.password_hash = password_hash
     user.must_change_password = False
 

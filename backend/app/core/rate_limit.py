@@ -1,7 +1,7 @@
-"""Rate limiting configuration using slowapi."""
+"""Configuración de límite de velocidad usando slowapi."""
 
 from slowapi import Limiter
 from slowapi.util import get_remote_address
 
-# Initialize rate limiter with IP-based key function
+# Inicializar limitador de velocidad con función de clave basada en IP
 limiter = Limiter(key_func=get_remote_address)

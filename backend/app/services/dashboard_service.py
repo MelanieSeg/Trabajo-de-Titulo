@@ -305,7 +305,7 @@ def export_consumption_csv(db: Session) -> str:
 
 
 def month_breakdown(db: Session) -> dict[tuple[int, int], dict[str, float]]:
-    """Return fast lookup for month-over-month variation checks."""
+    """Devuelve búsqueda rápida para verificaciones de variación mes a mes."""
     stmt = (
         select(
             MonthlyConsumption.year,

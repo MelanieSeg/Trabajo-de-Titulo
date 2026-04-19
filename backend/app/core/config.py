@@ -29,14 +29,14 @@ class Settings(BaseSettings):
     default_alert_water_threshold_pct: float = 18.0
     default_alert_volatility_threshold_pct: float = 15.0
 
-    # JWT Configuration
+    # Configuración JWT
     secret_key: str = "your-secret-key-change-in-production"
     jwt_algorithm: str = "HS256"
     jwt_expiration_hours: int = 24
     jwt_issuer: str = "eco-energy-api"
     jwt_audience: str = "eco-energy-app"
 
-    # Email Configuration
+    # Configuración de Email
     smtp_server: str = "smtp.gmail.com"
     smtp_port: int = 587
     smtp_user: str = "your-email@gmail.com"
@@ -45,7 +45,7 @@ class Settings(BaseSettings):
     email_from_name: str = "EcoEnergy"
     reset_password_token_expire_hours: int = 1
 
-    # Frontend URL for email links
+    # URL del frontend para enlaces de email
     frontend_url: str = "http://localhost:8081"
 
     model_config = SettingsConfigDict(

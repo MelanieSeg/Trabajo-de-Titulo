@@ -44,17 +44,17 @@ class AuditLogger:
             success: Whether the reset was successful
             error_message: Error message if reset failed
         """
-        # Determine status
+        # Determinar estado
         status = "SUCCESS" if success else "FAILURE"
 
-        # Create log message
+        # Crear mensaje de registro
         log_message = f"PASSWORD_RESET [{status}] - User: {user_email} (ID: {user_id})"
         if ip_address:
             log_message += f" - IP: {ip_address}"
         if error_message:
             log_message += f" - Error: {error_message}"
 
-        # Log to application logger (WARNING level for security events)
+        # Registrar en el registrador de aplicación (nivel WARNING para eventos de seguridad)
         if success:
             logger.warning(f"🔐 {log_message}")
         else:
@@ -79,7 +79,7 @@ class AuditLogger:
             logger.debug(f"Audit log saved to database - {user_email}")
         except Exception as e:
             logger.error(f"Failed to save audit log to database: {str(e)}")
-            # Don't raise - audit logging failure shouldn't break the request
+            # No lanzar - la falla del registro de auditoría no debería romper la solicitud
 
     @staticmethod
     def log_forgot_password_request(
@@ -105,11 +105,11 @@ class AuditLogger:
         logger.warning(f"🔑 {log_message}")
 
         try:
-            # Only log if we're within rate limits (we have a user to associate with)
-            # For security, we don't store forgot password requests for non-existent users
+            # Solo registrar si estamos dentro de los límites de velocidad (tenemos un usuario para asociar)
+            # Por seguridad, no almacenamos solicitudes de contraseña olvidada para usuarios inexistentes
             if user_found:
                 activity = ActivityLog(
-                    user_id=None,  # We don't log this to a specific user for security
+                    user_id=None,  # No registramos esto para un usuario específico por seguridad
                     activity_type="FORGOT_PASSWORD_REQUEST",
                     message=f"Password recovery requested for {email}",
                     metadata={

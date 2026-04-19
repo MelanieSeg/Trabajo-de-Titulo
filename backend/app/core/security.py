@@ -9,17 +9,17 @@ from app.core.config import get_settings
 
 settings = get_settings()
 
-# Pasword hashing context using bcrypt
+# Contexto de hash de contraseña usando bcrypt
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 
 def hash_password(password: str) -> str:
-    """Hash a password using bcrypt"""
+    """Generar hash de contraseña usando bcrypt"""
     return pwd_context.hash(password)
 
 
 def verify_password(plain_password: str, hashed_password: str) -> bool:
-    """Verify a plain password against its hash"""
+    """Verificar una contraseña simple contra su hash"""
     return pwd_context.verify(plain_password, hashed_password)
 
 
@@ -30,7 +30,7 @@ def create_access_token(
     scope: str = "full_access",
     expires_delta: Optional[timedelta] = None,
 ) -> str:
-    """Create a JWT access token"""
+    """Crear un token de acceso JWT"""
     if expires_delta is None:
         expires_delta = timedelta(hours=settings.jwt_expiration_hours)
 
@@ -57,7 +57,7 @@ def create_access_token(
 
 
 def decode_token(token: str) -> Optional[dict]:
-    """Decode and validate a JWT token"""
+    """Decodificar y validar un token JWT"""
     try:
         payload = jwt.decode(
             token,
@@ -74,7 +74,7 @@ def decode_token(token: str) -> Optional[dict]:
 
 
 def create_email_verification_token(user_id: int) -> str:
-    """Create an email verification token (expires in 24 hours)"""
+    """Crear un token de verificación de email (expira en 24 horas)"""
     now = datetime.now(timezone.utc)
     expire = now + timedelta(hours=24)
 
@@ -97,8 +97,8 @@ def create_email_verification_token(user_id: int) -> str:
 
 def verify_email_token(token: str) -> Optional[int]:
     """
-    Verify an email verification token and return user_id if valid.
-    Returns None if token is invalid or expired.
+    Verificar un token de verificación de email y devolver user_id si es válido.
+    Devuelve None si el token es inválido o ha expirado.
     """
     try:
         payload = jwt.decode(
@@ -109,7 +109,7 @@ def verify_email_token(token: str) -> Optional[int]:
             issuer=settings.jwt_issuer,
         )
 
-        # Check token type
+        # Verificar tipo de token
         if payload.get("type") != "email_verification":
             return None
 
@@ -120,7 +120,7 @@ def verify_email_token(token: str) -> Optional[int]:
 
 
 def create_password_reset_token(user_id: int, email: str) -> str:
-    """Create a password reset token (expires in 1 hour)"""
+    """Crear un token de restablecimiento de contraseña (expira en 1 hora)"""
     now = datetime.now(timezone.utc)
     expire = now + timedelta(hours=settings.reset_password_token_expire_hours)
 
@@ -144,8 +144,8 @@ def create_password_reset_token(user_id: int, email: str) -> str:
 
 def verify_password_reset_token(token: str) -> Optional[dict]:
     """
-    Verify a password reset token and return user_id and email if valid.
-    Returns None if token is invalid or expired.
+    Verificar un token de restablecimiento de contraseña y devolver user_id y email si es válido.
+    Devuelve None si el token es inválido o ha expirado.
     """
     try:
         payload = jwt.decode(
@@ -156,7 +156,7 @@ def verify_password_reset_token(token: str) -> Optional[dict]:
             issuer=settings.jwt_issuer,
         )
 
-        # Check token type
+        # Verificar tipo de token
         if payload.get("type") != "password_reset":
             return None
 

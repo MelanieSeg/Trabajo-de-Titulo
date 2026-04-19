@@ -18,15 +18,15 @@ from app.services.platform_service import apply_platform_config_to_db
 
 def init_schema() -> None:
     inspector = inspect(engine)
-    # Primary schema is managed by db/init.sql.
-    # Fallback to SQLAlchemy table creation only when core tables do not exist.
+    # El esquema principal es administrado por db/init.sql.
+    # Fallback a la creación de tabla SQLAlchemy solo cuando las tablas principales no existen.
     if "companies" in inspector.get_table_names():
         return
     Base.metadata.create_all(bind=engine)
 
 
 def run_compat_migrations(db: Session) -> None:
-    """Patch known schema drifts for existing deployments without Alembic."""
+    """Parchar desviaciones de esquema conocidas para implementaciones existentes sin Alembic."""
     db.execute(text("ALTER TABLE app_users ADD COLUMN IF NOT EXISTS role VARCHAR(30) NOT NULL DEFAULT 'USER'"))
     db.execute(text("UPDATE app_users SET role = 'USER' WHERE role IS NULL"))
     db.execute(text("ALTER TABLE alert_configs ADD COLUMN IF NOT EXISTS notify_email BOOLEAN NOT NULL DEFAULT TRUE"))
@@ -61,12 +61,12 @@ def ensure_defaults(db: Session) -> None:
                 )
             )
 
-    # Apply cross-cutting runtime configuration from root-level app/platform-config.json
+    # Aplicar configuración en tiempo de ejecución de nivel superior desde app/platform-config.json
     apply_platform_config_to_db(db, force_reload=False)
 
 
 def seed_test_user(db: Session) -> None:
-    """Create a test user for development/testing"""
+    """Crear un usuario de prueba para desarrollo/testing"""
     test_email = "test@ejemplo.com"
     test_user = db.scalar(select(User).where(User.email == test_email))
 
@@ -98,7 +98,7 @@ def seed_if_empty(db: Session) -> None:
     try:
         train_and_predict(db, horizon_months=3)
     except ValueError:
-        # If there are not enough records after ETL, continue with basic dashboard data.
+        # Si no hay suficientes registros después del ETL, continuar con datos de panel básico.
         pass
 
 
