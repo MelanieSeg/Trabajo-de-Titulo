@@ -83,8 +83,12 @@ def send_password_reset_email(recipient_email: str, reset_token: str, frontend_u
 
         # Development mode: just log the email
         if settings.app_env == "development":
-            logger.info(f"[DEV MODE] Password reset email would be sent to {recipient_email}")
-            logger.info(f"[DEV MODE] Reset link: {reset_link}")
+            logger.warning("=" * 80)
+            logger.warning(f"MODO DESARROLLO - Email de recuperación de contraseña")
+            logger.warning(f"Para: {recipient_email}")
+            logger.warning(f"Token: {reset_token}")
+            logger.warning(f"Link: {reset_link}")
+            logger.warning("=" * 80)
             return True
 
         # Production: send email via SMTP
@@ -171,8 +175,12 @@ def send_verification_email(recipient_email: str, verification_token: str, front
 
         # Development mode: just log the email
         if settings.app_env == "development":
-            logger.info(f"[DEV MODE] Verification email would be sent to {recipient_email}")
-            logger.info(f"[DEV MODE] Verification link: {verification_link}")
+            logger.warning("=" * 80)
+            logger.warning(f"MODO DESARROLLO - Email de verificación")
+            logger.warning(f"Para: {recipient_email}")
+            logger.warning(f"Token: {verification_token}")
+            logger.warning(f"Link: {verification_link}")
+            logger.warning("=" * 80)
             return True
 
         # Production: send email via SMTP
