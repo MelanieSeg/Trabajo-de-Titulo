@@ -36,6 +36,18 @@ class Settings(BaseSettings):
     jwt_issuer: str = "eco-energy-api"
     jwt_audience: str = "eco-energy-app"
 
+    # Email Configuration
+    smtp_server: str = "smtp.gmail.com"
+    smtp_port: int = 587
+    smtp_user: str = "your-email@gmail.com"
+    smtp_password: str = "your-app-password"
+    email_from: str = "noreply@ecoenergy.com"
+    email_from_name: str = "EcoEnergy"
+    reset_password_token_expire_hours: int = 1
+
+    # Frontend URL for email links
+    frontend_url: str = "http://localhost:8081"
+
     model_config = SettingsConfigDict(
         env_file=".env",
         env_file_encoding="utf-8",

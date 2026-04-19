@@ -64,3 +64,10 @@ export const forgotPasswordSchema = z.object({
 });
 
 export type ForgotPasswordInput = z.infer<typeof forgotPasswordSchema>;
+
+// Esquema para restablecer contraseña
+export const resetPasswordSchema = z.object({
+  password: passwordSchema,
+});
+
+export type ResetPasswordInput = z.infer<typeof resetPasswordSchema>;

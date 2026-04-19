@@ -90,3 +90,53 @@ class TokenData(BaseModel):
     scope: str = "full_access"
     iat: datetime
     exp: datetime
+
+
+class ForgotPasswordRequest(BaseModel):
+    """Forgot password request schema"""
+    email: EmailStr
+
+
+class ForgotPasswordResponse(BaseModel):
+    """Forgot password response schema"""
+    message: str
+    email: str
+
+
+class ResetPasswordRequest(BaseModel):
+    """Reset password request schema with strong password validation"""
+    token: str = Field(min_length=1, max_length=1000)
+    password: str = Field(min_length=8, max_length=100)
+
+    @field_validator("password")
+    @classmethod
+    def validate_password_strength(cls, v: str) -> str:
+        """
+        Validate password requirements:
+        - Minimum 8 characters
+        - Maximum 100 characters
+        - At least one uppercase letter (A-Z)
+        - At least one lowercase letter (a-z)
+        - At least one digit (0-9)
+        - At least one special character (!@#$%^&*()_+-=[]{}|;:,.<>?)
+        """
+        if not any(c.isupper() for c in v):
+            raise ValueError("La contraseña debe contener al menos una mayúscula (A-Z)")
+
+        if not any(c.islower() for c in v):
+            raise ValueError("La contraseña debe contener al menos una minúscula (a-z)")
+
+        if not any(c.isdigit() for c in v):
+            raise ValueError("La contraseña debe contener al menos un número (0-9)")
+
+        special_chars = set("!@#$%^&*()_+-=[]{}|;:,.<>?")
+        if not any(c in special_chars for c in v):
+            raise ValueError("La contraseña debe contener al menos un carácter especial (!@#$%^&*()_+-=[]{}|;:,.<>?)")
+
+        return v
+
+
+class ResetPasswordResponse(BaseModel):
+    """Reset password response schema"""
+    message: str
+    email: str

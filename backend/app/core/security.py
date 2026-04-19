@@ -117,3 +117,55 @@ def verify_email_token(token: str) -> Optional[int]:
         return user_id
     except (JWTError, ValidationError, ValueError):
         return None
+
+
+def create_password_reset_token(user_id: int, email: str) -> str:
+    """Create a password reset token (expires in 1 hour)"""
+    now = datetime.now(timezone.utc)
+    expire = now + timedelta(hours=settings.reset_password_token_expire_hours)
+
+    payload = {
+        "sub": str(user_id),
+        "email": email,
+        "type": "password_reset",
+        "iat": now.timestamp(),
+        "exp": expire.timestamp(),
+        "iss": settings.jwt_issuer,
+        "aud": settings.jwt_audience,
+    }
+
+    encoded_jwt = jwt.encode(
+        payload,
+        settings.secret_key,
+        algorithm=settings.jwt_algorithm,
+    )
+    return encoded_jwt
+
+
+def verify_password_reset_token(token: str) -> Optional[dict]:
+    """
+    Verify a password reset token and return user_id and email if valid.
+    Returns None if token is invalid or expired.
+    """
+    try:
+        payload = jwt.decode(
+            token,
+            settings.secret_key,
+            algorithms=[settings.jwt_algorithm],
+            audience=settings.jwt_audience,
+            issuer=settings.jwt_issuer,
+        )
+
+        # Check token type
+        if payload.get("type") != "password_reset":
+            return None
+
+        user_id = int(payload.get("sub"))
+        email = payload.get("email")
+
+        if not email:
+            return None
+
+        return {"user_id": user_id, "email": email}
+    except (JWTError, ValidationError, ValueError):
+        return None

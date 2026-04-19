@@ -258,6 +258,27 @@ export async function verifyEmail(token: string): Promise<{ message: string; use
   return response;
 }
 
+export async function forgotPassword(email: string): Promise<{ message: string; email: string }> {
+  const response = await request<{ message: string; email: string }>("/auth/forgot-password", {
+    method: "POST",
+    body: JSON.stringify({ email }),
+  });
+
+  return response;
+}
+
+export async function resetPassword(
+  token: string,
+  password: string
+): Promise<{ message: string; email: string }> {
+  const response = await request<{ message: string; email: string }>("/auth/reset-password", {
+    method: "POST",
+    body: JSON.stringify({ token, password }),
+  });
+
+  return response;
+}
+
 export function logout(): void {
   clearToken();
 }

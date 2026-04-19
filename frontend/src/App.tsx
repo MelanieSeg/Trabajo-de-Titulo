@@ -15,6 +15,7 @@ import Login from "./pages/Login.tsx";
 const Registro = lazy(() => import("./pages/Registro.tsx"));
 const VerificarEmail = lazy(() => import("./pages/VerificarEmail.tsx"));
 const RecuperarContraseña = lazy(() => import("./pages/RecuperarContraseña.tsx"));
+const ResetPassword = lazy(() => import("./pages/ResetPassword.tsx"));
 const Electricidad = lazy(() => import("./pages/Electricidad.tsx"));
 const Agua = lazy(() => import("./pages/Agua.tsx"));
 const Metricas = lazy(() => import("./pages/Metricas.tsx"));
@@ -71,6 +72,14 @@ const App = () => (
                   element={
                     <PublicRoute>
                       <RecuperarContraseña />
+                    </PublicRoute>
+                  }
+                />
+                <Route
+                  path="/reset-password"
+                  element={
+                    <PublicRoute>
+                      <ResetPassword />
                     </PublicRoute>
                   }
                 />

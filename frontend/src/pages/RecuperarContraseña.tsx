@@ -5,16 +5,19 @@ import { Label } from "@/components/ui/label";
 import { useState } from "react";
 import { Zap, Droplets, Leaf, Mail, ArrowLeft, CheckCircle2, AlertCircle } from "lucide-react";
 import { forgotPasswordSchema, type ForgotPasswordInput } from "@/lib/validation";
+import { forgotPassword } from "@/lib/api";
 
 export default function RecuperarContraseña() {
   const [email, setEmail] = useState("");
   const [isSubmitted, setIsSubmitted] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
+  const [generalError, setGeneralError] = useState<string | null>(null);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrors({});
+    setGeneralError(null);
     setIsLoading(true);
 
     try {
@@ -31,8 +34,12 @@ export default function RecuperarContraseña() {
         return;
       }
 
-      // TODO: Conexión con API para enviar email de recuperación
+      // Call API to send reset email
+      await forgotPassword(email);
       setIsSubmitted(true);
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : "Ocurrió un error al enviar el correo";
+      setGeneralError(errorMessage);
     } finally {
       setIsLoading(false);
     }
@@ -67,6 +74,14 @@ export default function RecuperarContraseña() {
           <CardContent>
             {!isSubmitted ? (
               <form onSubmit={handleSubmit} className="space-y-4">
+                {/* General Error */}
+                {generalError && (
+                  <div className="p-3 bg-red-500/10 border border-red-500/20 rounded-md flex items-start gap-2">
+                    <AlertCircle className="w-5 h-5 text-red-600 flex-shrink-0 mt-0.5" />
+                    <p className="text-sm text-red-600">{generalError}</p>
+                  </div>
+                )}
+
                 {/* Email */}
                 <div className="space-y-2">
                   <Label htmlFor="email" className="text-sm font-medium">
@@ -111,6 +126,9 @@ export default function RecuperarContraseña() {
                   Hemos enviado un enlace de recuperación a <br/>
                   <span className="font-medium text-foreground">{email}</span>
                 </div>
+                <p className="text-xs text-muted-foreground">
+                  Revisa tu bandeja de entrada (y carpeta de spam). El enlace expirará en 1 hora.
+                </p>
                 <Button
                   variant="outline"
                   className="w-full mt-4"
