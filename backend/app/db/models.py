@@ -397,3 +397,75 @@ class AuditTrailBlock(Base):
     __table_args__ = (
         UniqueConstraint("entity_type", "entity_id", "action", "payload_hash", name="uq_audit_trail_block_event"),
     )
+
+
+class ResourceType(Base):
+    __tablename__ = "resource_types"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    code: Mapped[str] = mapped_column(String(60), nullable=False, unique=True)
+    name: Mapped[str] = mapped_column(String(180), nullable=False)
+    category: Mapped[str] = mapped_column(String(120), nullable=False)
+    unit: Mapped[str] = mapped_column(String(30), nullable=False)
+    regulatory_body: Mapped[Optional[str]] = mapped_column(String(120), nullable=True)
+    description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+
+class ResourceMonthlyConsumption(Base):
+    __tablename__ = "resource_monthly_consumptions"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    resource_type_id: Mapped[int] = mapped_column(
+        ForeignKey("resource_types.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    facility_id: Mapped[int] = mapped_column(
+        ForeignKey("facilities.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    year: Mapped[int] = mapped_column(Integer, nullable=False)
+    month: Mapped[int] = mapped_column(Integer, nullable=False)
+    consumption_value: Mapped[float] = mapped_column(Float, nullable=False)
+    cost_usd: Mapped[float] = mapped_column(Float, nullable=False, default=0)
+    emissions_tco2e: Mapped[float] = mapped_column(Float, nullable=False, default=0)
+    source: Mapped[str] = mapped_column(String(80), nullable=False, default="simulated")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        onupdate=func.now(),
+        nullable=False,
+    )
+
+    __table_args__ = (
+        UniqueConstraint(
+            "resource_type_id",
+            "facility_id",
+            "year",
+            "month",
+            name="uq_resource_monthly_consumption",
+        ),
+        CheckConstraint("month >= 1 AND month <= 12", name="ck_resource_monthly_consumption_month"),
+        CheckConstraint("year >= 2000 AND year <= 2100", name="ck_resource_monthly_consumption_year"),
+        CheckConstraint("consumption_value >= 0", name="ck_resource_monthly_consumption_non_negative"),
+        CheckConstraint("cost_usd >= 0", name="ck_resource_monthly_consumption_cost_non_negative"),
+    )
+
+
+class ResourceAreaDistribution(Base):
+    __tablename__ = "resource_area_distributions"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    resource_consumption_id: Mapped[int] = mapped_column(
+        ForeignKey("resource_monthly_consumptions.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    area_name: Mapped[str] = mapped_column(String(80), nullable=False)
+    percentage: Mapped[float] = mapped_column(Float, nullable=False)
+
+    __table_args__ = (
+        UniqueConstraint("resource_consumption_id", "area_name", name="uq_resource_area_distribution"),
+        CheckConstraint("percentage >= 0 AND percentage <= 100", name="ck_resource_area_distribution_pct"),
+    )

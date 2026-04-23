@@ -19,6 +19,8 @@ export interface TimeseriesPoint {
   water_m3: number | null;
   predicted_electricity_kwh: number | null;
   predicted_water_m3: number | null;
+  energy_values?: Record<string, number | null>;
+  energy_predictions?: Record<string, number | null>;
 }
 
 export interface DistributionItem {
@@ -366,22 +368,31 @@ export interface OperationsUser {
 export interface OperationsOverview {
   generated_at: string;
   summary: DashboardSummary;
+  energy_catalog: Array<{
+    code: string;
+    label: string;
+    unit: string;
+    category: string;
+    metric_name: string;
+    lower_is_better: boolean;
+  }>;
   timeseries: TimeseriesPoint[];
   distribution: DistributionItem[];
   efficiency: EfficiencyData;
   electricity: {
     cards: Array<{ label: string; value: number; unit: string; change_pct: number }>;
-    monthly: Array<{ mes: string; consumo: number; costo: number }>;
+    monthly: Array<{ mes: string; consumo: number; costo: number; prediccion?: number | null }>;
     areas: Array<{ area: string; consumo: number; percentage: number }>;
   };
   water: {
     cards: Array<{ label: string; value: number; unit: string; change_pct: number }>;
-    monthly: Array<{ mes: string; consumo: number; costo: number }>;
+    monthly: Array<{ mes: string; consumo: number; costo: number; prediccion?: number | null }>;
     areas: Array<{ area: string; consumo: number; percentage: number }>;
   };
   metrics: Array<{ label: string; value: number; target: number; status: "good" | "warning" | "critical" }>;
   kpis: Array<{
     name: string;
+    code?: string;
     value: number;
     target: number;
     unit: string;
@@ -395,6 +406,7 @@ export interface OperationsOverview {
     region: string | null;
     electricity: number;
     water: number;
+    resources: Record<string, number>;
     status: string;
     color: "default" | "secondary" | "destructive";
   }>;
@@ -402,19 +414,29 @@ export interface OperationsOverview {
     accuracy_pct: number;
     projected_savings_usd: number;
     anomaly_count: number;
+    energy_catalog: Array<{ code: string; label: string; unit: string }>;
     series: Array<{
       mes: string;
       electricidad_real: number | null;
       agua_real: number | null;
       electricidad_pred: number | null;
       agua_pred: number | null;
+      real: Record<string, number | null>;
+      pred: Record<string, number | null>;
     }>;
     recommendations: Array<{ text: string; type: "high" | "medium" | "low" }>;
   };
   trends: {
-    series: Array<{ mes: string; electricidad: number; agua: number }>;
+    series: Array<{
+      mes: string;
+      electricidad: number | null;
+      agua: number | null;
+      energy_values: Record<string, number | null>;
+      energy_predictions: Record<string, number | null>;
+    }>;
     electricity_change_pct: number;
     water_change_pct: number;
+    changes: Array<{ code: string; label: string; unit: string; change_pct: number }>;
     insights: string[];
   };
   anomalies: {
@@ -571,6 +593,70 @@ export function updateOperationsSettings(
   });
 }
 
+export interface ResourceCatalogItem {
+  code: string;
+  name: string;
+  category: string;
+  unit: string;
+  regulatory_body: string | null;
+  description: string | null;
+}
+
+export interface ResourceOverviewCard {
+  label: string;
+  value: number;
+  unit: string;
+  change_pct: number;
+}
+
+export interface ResourceMonthlyPoint {
+  year: number;
+  month: number;
+  mes: string;
+  consumo: number;
+  costo: number;
+}
+
+export interface ResourceAreaPoint {
+  area: string;
+  consumo: number;
+  percentage: number;
+}
+
+export interface ResourcePredictionPoint {
+  year: number;
+  month: number;
+  mes: string;
+  value: number;
+}
+
+export interface ResourceOverviewAlert {
+  id: number;
+  severity: AlertSeverity;
+  title: string;
+  description: string;
+  year: number | null;
+  month: number | null;
+  created_at: string;
+}
+
+export interface ResourceOverview {
+  resource: ResourceCatalogItem;
+  cards: ResourceOverviewCard[];
+  monthly: ResourceMonthlyPoint[];
+  areas: ResourceAreaPoint[];
+  predictions: ResourcePredictionPoint[];
+  alerts: ResourceOverviewAlert[];
+}
+
+export function fetchResourceCatalog(): Promise<ResourceCatalogItem[]> {
+  return request<ResourceCatalogItem[]>("/resources/catalog");
+}
+
+export function fetchResourceOverview(resourceCode: string, months: number = 12): Promise<ResourceOverview> {
+  return request<ResourceOverview>(`/resources/${resourceCode}/overview?months=${months}`);
+}
+
 async function exportBlob(path: string): Promise<Blob> {
   const token = getToken();
   const headers = new Headers();
@@ -587,18 +673,19 @@ async function exportBlob(path: string): Promise<Blob> {
 
 export async function exportPredictionsCsv(): Promise<Blob> {
   const overview = await fetchOperationsOverview();
-  const rows = overview.predictions.series.map((item) => ({
-    mes: item.mes,
-    electricidad_real: item.electricidad_real ?? "",
-    agua_real: item.agua_real ?? "",
-    electricidad_pred: item.electricidad_pred ?? "",
-    agua_pred: item.agua_pred ?? "",
-  }));
-  const header = ["mes", "electricidad_real", "agua_real", "electricidad_pred", "agua_pred"];
-  const csvBody = [
-    header.join(","),
-    ...rows.map((row) => header.map((col) => String(row[col as keyof typeof row])).join(",")),
-  ].join("\n");
+  const energyCodes = overview.energy_catalog.map((item) => item.code);
+  const header = [
+    "mes",
+    ...energyCodes.map((code) => `${code}_real`),
+    ...energyCodes.map((code) => `${code}_pred`),
+  ];
+
+  const lines = overview.predictions.series.map((item) => {
+    const real = energyCodes.map((code) => String(item.real?.[code] ?? ""));
+    const pred = energyCodes.map((code) => String(item.pred?.[code] ?? ""));
+    return [item.mes, ...real, ...pred].join(",");
+  });
+  const csvBody = [header.join(","), ...lines].join("\n");
   return new Blob([csvBody], { type: "text/csv;charset=utf-8;" });
 }
 

@@ -1,4 +1,17 @@
-import { BarChart3, Zap, Droplets, DollarSign, Leaf, Activity } from "lucide-react";
+import {
+  BarChart3,
+  Cloud,
+  Droplets,
+  Factory,
+  FlaskConical,
+  Flame,
+  Fuel,
+  Leaf,
+  TrendingDown,
+  TrendingUp,
+  Wind,
+  Zap,
+} from "lucide-react";
 import { DashboardLayout } from "@/components/DashboardLayout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
@@ -9,16 +22,37 @@ import { useState } from "react";
 const iconMap: Record<string, typeof Zap> = {
   Electricidad: Zap,
   Agua: Droplets,
-  "Costo Total": DollarSign,
-  "Huella de Carbono": Leaf,
-  "Eficiencia General": Activity,
+  "Gas Natural": Fuel,
+  "Diésel": Factory,
+  Gasolina: Flame,
+  "GLP / Propano": Wind,
+  "Vapor / Energía Térmica": Factory,
+  "Energía Renovable Generada": Leaf,
+  "Residuos Totales": Cloud,
+  "Emisiones Reales de CO2e": Cloud,
+  "Químicos y Consumibles": FlaskConical,
 };
 
 export default function Metricas() {
   const [months, setMonths] = useState(12);
   const { data, isLoading, isError } = useOperationsOverview(months);
 
-  const metrics = data?.metrics ?? [];
+  const energyCatalog = data?.energy_catalog ?? [];
+  const kpis = data?.kpis ?? [];
+
+  const energyMetrics = energyCatalog.map((energy) => {
+    const kpi = kpis.find((item) => item.code === energy.code);
+    return {
+      code: energy.code,
+      label: energy.label,
+      unit: energy.unit,
+      value: kpi?.value ?? 0,
+      target: kpi?.target ?? 0,
+      progress: kpi?.progress ?? 0,
+      trend: kpi?.trend ?? "stable",
+      status: kpi?.status ?? "warning",
+    };
+  });
 
   return (
     <DashboardLayout>
@@ -34,10 +68,10 @@ export default function Metricas() {
         {isError && <Card className="p-4 text-sm text-destructive">No se pudieron cargar métricas.</Card>}
 
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-          {metrics.map((metric) => {
+          {energyMetrics.map((metric) => {
             const Icon = iconMap[metric.label] ?? BarChart3;
             return (
-              <Card key={metric.label}>
+              <Card key={metric.code}>
                 <CardHeader className="pb-2">
                   <div className="flex items-center gap-2">
                     <div className="h-8 w-8 rounded-lg bg-primary/10 flex items-center justify-center">
@@ -47,11 +81,30 @@ export default function Metricas() {
                   </div>
                 </CardHeader>
                 <CardContent>
-                  <div className="flex items-end justify-between mb-2">
-                    <span className="text-2xl font-bold">{metric.value.toFixed(1)}%</span>
-                    <span className="text-xs text-muted-foreground">Meta: {metric.target.toFixed(1)}%</span>
+                  <div className="mb-2 flex items-end justify-between gap-2">
+                    <span className="text-2xl font-bold">
+                      {metric.value.toLocaleString("es-CL", { maximumFractionDigits: 2 })}{" "}
+                      <span className="text-sm font-normal text-muted-foreground">{metric.unit}</span>
+                    </span>
+                    <span className="text-xs text-muted-foreground">
+                      Meta: {metric.target.toLocaleString("es-CL", { maximumFractionDigits: 2 })} {metric.unit}
+                    </span>
                   </div>
-                  <Progress value={metric.value} className="h-2" />
+                  <div className="mb-2 flex items-center justify-between text-xs">
+                    <span className="text-muted-foreground">
+                      Cumplimiento: {metric.progress.toFixed(1)}%
+                    </span>
+                    <span className={metric.trend === "up" ? "text-energy-red" : metric.trend === "down" ? "text-energy-green" : "text-muted-foreground"}>
+                      {metric.trend === "up" ? (
+                        <TrendingUp className="h-3.5 w-3.5" />
+                      ) : metric.trend === "down" ? (
+                        <TrendingDown className="h-3.5 w-3.5" />
+                      ) : (
+                        "Estable"
+                      )}
+                    </span>
+                  </div>
+                  <Progress value={metric.progress} className="h-2" />
                 </CardContent>
               </Card>
             );

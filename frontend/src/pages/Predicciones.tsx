@@ -16,6 +16,11 @@ export default function Predicciones() {
   const queryClient = useQueryClient();
 
   const chartData = data?.timeseries ?? [];
+  const energyCatalog = data?.energy_catalog?.map((item) => ({
+    code: item.code,
+    label: item.label,
+    unit: item.unit,
+  }));
   const recommendations = data?.predictions.recommendations ?? [];
 
   const retrainModel = async () => {
@@ -73,7 +78,11 @@ export default function Predicciones() {
           </Card>
         </div>
 
-        <ConsumptionChart data={chartData} />
+        <ConsumptionChart
+          data={chartData}
+          energyCatalog={energyCatalog}
+          subtitle="Pronóstico multienergía con línea de predicción punteada"
+        />
 
         <Card>
           <CardHeader>

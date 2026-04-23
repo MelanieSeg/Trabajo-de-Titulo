@@ -138,4 +138,55 @@
   .sidebar-gradient {
     background: linear-gradient(180deg, hsl(152 40% 12%) 0%, hsl(152 35% 8%) 100%);
   }
+
+  .energy-carousel {
+    --visible-cards: 4;
+    --energy-items: 8;
+    --energy-duration: 60s;
+    @apply overflow-hidden;
+  }
+
+  .energy-carousel-track {
+    @apply flex;
+    width: calc((var(--energy-items) / var(--visible-cards)) * 100%);
+    animation: energy-carousel-scroll var(--energy-duration) linear infinite;
+  }
+
+  .energy-carousel:hover .energy-carousel-track {
+    animation-play-state: paused;
+  }
+
+  .energy-carousel-item {
+    width: calc(100% / var(--energy-items));
+    flex: 0 0 auto;
+    box-sizing: border-box;
+    @apply px-2;
+  }
+
+  @media (max-width: 1024px) {
+    .energy-carousel {
+      --visible-cards: 2;
+    }
+  }
+
+  @media (max-width: 640px) {
+    .energy-carousel {
+      --visible-cards: 1;
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .energy-carousel-track {
+      animation: none;
+    }
+  }
+}
+
+@keyframes energy-carousel-scroll {
+  from {
+    transform: translateX(0);
+  }
+  to {
+    transform: translateX(-50%);
+  }
 }

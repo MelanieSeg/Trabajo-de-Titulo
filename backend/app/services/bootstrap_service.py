@@ -19,6 +19,9 @@ from app.db.models import (
     MeasurementCertificate,
     MeterCalibration,
     MonthlyConsumption,
+    ResourceAreaDistribution,
+    ResourceMonthlyConsumption,
+    ResourceType,
     User,
 )
 from app.db.session import engine
@@ -26,6 +29,7 @@ from app.services.alert_service import add_info_alert_if_empty, get_or_create_al
 from app.services.etl_service import run_etl_from_csv
 from app.services.ml_service import train_and_predict
 from app.services.platform_service import apply_platform_config_to_db
+from app.services.resource_service import ensure_resource_catalog, list_resource_catalog, seed_resource_data
 
 
 def init_schema() -> None:
@@ -54,6 +58,9 @@ def run_compat_migrations(db: Session) -> None:
             MeterCalibration.__table__,
             MeasurementCertificate.__table__,
             AuditTrailBlock.__table__,
+            ResourceType.__table__,
+            ResourceMonthlyConsumption.__table__,
+            ResourceAreaDistribution.__table__,
         ],
     )
 
@@ -88,6 +95,37 @@ def ensure_defaults(db: Session) -> None:
 
     # Aplicar configuración en tiempo de ejecución de nivel superior desde app/platform-config.json
     apply_platform_config_to_db(db, force_reload=False)
+    ensure_resource_catalog(db)
+
+    resource_target_defaults = {
+        "gas_natural": 620.0,
+        "diesel": 85.0,
+        "gasolina": 40.0,
+        "glp_propano": 55.0,
+        "vapor_termica": 24.0,
+        "energia_renovable": 950.0,
+        "residuos": 36.0,
+        "emisiones_co2e": 3.2,
+        "quimicos_consumibles": 90.0,
+    }
+    for resource in list_resource_catalog(db):
+        code = resource["code"]
+        unit = resource["unit"]
+        exists = db.scalar(
+            select(EfficiencyTarget).where(
+                EfficiencyTarget.metric_name == code,
+                EfficiencyTarget.unit == unit,
+            )
+        )
+        if exists:
+            continue
+        db.add(
+            EfficiencyTarget(
+                metric_name=code,
+                target_value=resource_target_defaults.get(code, 100.0),
+                unit=unit,
+            )
+        )
 
     # Estándares de referencia para cumplimiento y fiscalización.
     default_standards = [
@@ -238,5 +276,6 @@ def bootstrap(db: Session) -> None:
     ensure_defaults(db)
     seed_test_user(db)
     seed_if_empty(db)
+    seed_resource_data(db)
     regenerate_anomaly_alerts(db)
     add_info_alert_if_empty(db)

@@ -38,6 +38,7 @@ const Configuracion = lazy(() => import("./pages/Configuracion.tsx"));
 const Seguridad = lazy(() => import("./pages/Seguridad.tsx"));
 const Ayuda = lazy(() => import("./pages/Ayuda.tsx"));
 const Fiscalizacion = lazy(() => import("./pages/Fiscalizacion.tsx"));
+const RecursoEnergetico = lazy(() => import("./pages/RecursoEnergetico.tsx"));
 
 const queryClient = new QueryClient();
 
@@ -271,6 +272,14 @@ const App = () => (
                   element={
                     <ProtectedRoute>
                       <Fiscalizacion />
+                    </ProtectedRoute>
+                  }
+                />
+                <Route
+                  path="/recursos/:code"
+                  element={
+                    <ProtectedRoute>
+                      <RecursoEnergetico />
                     </ProtectedRoute>
                   }
                 />

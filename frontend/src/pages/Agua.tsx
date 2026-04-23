@@ -2,7 +2,7 @@ import { Droplets, TrendingDown, DollarSign } from "lucide-react";
 import { DashboardLayout } from "@/components/DashboardLayout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { ChartContainer, ChartTooltip, ChartTooltipContent } from "@/components/ui/chart";
-import { AreaChart, Area, XAxis, YAxis, CartesianGrid, BarChart, Bar } from "recharts";
+import { LineChart, Line, XAxis, YAxis, CartesianGrid, BarChart, Bar } from "recharts";
 import { useState } from "react";
 import { DateRangeFilter } from "@/components/DateRangeFilter";
 import { useOperationsOverview } from "@/hooks/useOperationsOverview";
@@ -10,10 +10,11 @@ import { useOperationsOverview } from "@/hooks/useOperationsOverview";
 const chartConfig = {
   consumo: {
     label: "Consumo (m³)",
-    theme: {
-      light: "hsl(0 0% 12%)",
-      dark: "hsl(0 0% 96%)",
-    },
+    color: "hsl(200 85% 48%)",
+  },
+  prediccion: {
+    label: "Predicción (m³)",
+    color: "hsl(160 60% 42%)",
   },
 };
 
@@ -28,6 +29,11 @@ export default function Agua() {
   const cards = data?.water.cards ?? [];
   const monthlyData = data?.water.monthly ?? [];
   const areaData = data?.water.areas ?? [];
+  const trendData = (data?.timeseries ?? []).map((item) => ({
+    mes: item.label,
+    consumo: item.energy_values?.water ?? item.water_m3,
+    prediccion: item.energy_predictions?.water ?? item.predicted_water_m3,
+  }));
 
   return (
     <DashboardLayout>
@@ -75,19 +81,28 @@ export default function Agua() {
             </CardHeader>
             <CardContent>
               <ChartContainer config={chartConfig} className="h-[300px] w-full">
-                <AreaChart data={monthlyData}>
+                <LineChart data={trendData.length > 0 ? trendData : monthlyData}>
                   <CartesianGrid strokeDasharray="3 3" stroke={gridStroke} />
                   <XAxis dataKey="mes" stroke={axisStroke} tick={tickStyle} tickLine={{ stroke: axisStroke }} />
                   <YAxis stroke={axisStroke} tick={tickStyle} tickLine={{ stroke: axisStroke }} />
                   <ChartTooltip content={<ChartTooltipContent />} />
-                  <Area
+                  <Line
                     type="monotone"
                     dataKey="consumo"
-                    fill="var(--color-consumo)"
-                    fillOpacity={0.3}
                     stroke="var(--color-consumo)"
+                    strokeWidth={2}
+                    dot={false}
                   />
-                </AreaChart>
+                  <Line
+                    type="monotone"
+                    dataKey="prediccion"
+                    stroke="var(--color-prediccion)"
+                    strokeWidth={2}
+                    strokeDasharray="6 4"
+                    dot={false}
+                    connectNulls
+                  />
+                </LineChart>
               </ChartContainer>
             </CardContent>
           </Card>

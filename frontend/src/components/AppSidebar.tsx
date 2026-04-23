@@ -2,7 +2,8 @@ import {
   LayoutDashboard, Zap, Droplets, BarChart3, TrendingUp,
   Bell, Settings, FileText, Upload, Users, Building2,
   Leaf, Target, Calendar, Download, Shield, HelpCircle,
-  Database, Brain, Gauge, AlertTriangle, PieChart, Map, Scale
+  Database, Brain, Gauge, AlertTriangle, PieChart, Map, Scale,
+  Fuel, Flame, Wind, Recycle, Cloud, FlaskConical, Factory
 } from "lucide-react";
 import { NavLink } from "@/components/NavLink";
 import {
@@ -13,11 +14,23 @@ import {
 
 const mainItems = [
   { title: "Dashboard", url: "/", icon: LayoutDashboard },
-  { title: "Consumo Eléctrico", url: "/electricidad", icon: Zap },
-  { title: "Consumo de Agua", url: "/agua", icon: Droplets },
   { title: "Métricas Generales", url: "/metricas", icon: BarChart3 },
   { title: "Indicadores KPI", url: "/kpis", icon: Gauge },
   { title: "Mapa de Consumo", url: "/mapa", icon: Map },
+];
+
+const fiscalizedEnergyItems = [
+  { title: "Consumo Eléctrico", url: "/electricidad", icon: Zap },
+  { title: "Consumo de Agua", url: "/agua", icon: Droplets },
+  { title: "Gas Natural", url: "/recursos/gas_natural", icon: Fuel },
+  { title: "Diésel", url: "/recursos/diesel", icon: Factory },
+  { title: "Gasolina", url: "/recursos/gasolina", icon: Flame },
+  { title: "GLP / Propano", url: "/recursos/glp_propano", icon: Wind },
+  { title: "Vapor Térmico", url: "/recursos/vapor_termica", icon: Gauge },
+  { title: "Renovable", url: "/recursos/energia_renovable", icon: Leaf },
+  { title: "Residuos", url: "/recursos/residuos", icon: Recycle },
+  { title: "Emisiones CO2e", url: "/recursos/emisiones_co2e", icon: Cloud },
+  { title: "Químicos", url: "/recursos/quimicos_consumibles", icon: FlaskConical },
 ];
 
 const analyticsItems = [
@@ -100,6 +113,7 @@ export function AppSidebar() {
 
       <SidebarContent className="px-2">
         <SidebarSection label="Principal" items={mainItems} />
+        <SidebarSection label="Energías Fiscalizadas" items={fiscalizedEnergyItems} />
         <SidebarSection label="Analítica e IA" items={analyticsItems} />
         <SidebarSection label="Gestión de Datos" items={managementItems} />
         <SidebarSection label="Administración" items={adminItems} />

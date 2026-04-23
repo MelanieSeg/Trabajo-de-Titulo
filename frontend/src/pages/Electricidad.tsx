@@ -2,7 +2,7 @@ import { Zap, TrendingUp, TrendingDown } from "lucide-react";
 import { DashboardLayout } from "@/components/DashboardLayout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { ChartContainer, ChartTooltip, ChartTooltipContent } from "@/components/ui/chart";
-import { AreaChart, Area, XAxis, YAxis, CartesianGrid, BarChart, Bar } from "recharts";
+import { LineChart, Line, XAxis, YAxis, CartesianGrid, BarChart, Bar } from "recharts";
 import { useState } from "react";
 import { DateRangeFilter } from "@/components/DateRangeFilter";
 import { useOperationsOverview } from "@/hooks/useOperationsOverview";
@@ -10,17 +10,15 @@ import { useOperationsOverview } from "@/hooks/useOperationsOverview";
 const chartConfig = {
   consumo: {
     label: "Consumo (kWh)",
-    theme: {
-      light: "hsl(0 0% 12%)",
-      dark: "hsl(0 0% 96%)",
-    },
+    color: "hsl(45 95% 52%)",
   },
   costo: {
     label: "Costo (USD)",
-    theme: {
-      light: "hsl(0 0% 12%)",
-      dark: "hsl(0 0% 96%)",
-    },
+    color: "hsl(26 82% 50%)",
+  },
+  prediccion: {
+    label: "Predicción (kWh)",
+    color: "hsl(275 62% 52%)",
   },
 };
 
@@ -35,6 +33,11 @@ export default function Electricidad() {
   const cards = data?.electricity.cards ?? [];
   const monthlyData = data?.electricity.monthly ?? [];
   const areaData = data?.electricity.areas ?? [];
+  const trendData = (data?.timeseries ?? []).map((item) => ({
+    mes: item.label,
+    consumo: item.energy_values?.electricity ?? item.electricity_kwh,
+    prediccion: item.energy_predictions?.electricity ?? item.predicted_electricity_kwh,
+  }));
 
   return (
     <DashboardLayout>
@@ -80,19 +83,28 @@ export default function Electricidad() {
             </CardHeader>
             <CardContent>
               <ChartContainer config={chartConfig} className="h-[300px] w-full">
-                <AreaChart data={monthlyData}>
+                <LineChart data={trendData.length > 0 ? trendData : monthlyData}>
                   <CartesianGrid strokeDasharray="3 3" stroke={gridStroke} />
                   <XAxis dataKey="mes" stroke={axisStroke} tick={tickStyle} tickLine={{ stroke: axisStroke }} />
                   <YAxis stroke={axisStroke} tick={tickStyle} tickLine={{ stroke: axisStroke }} />
                   <ChartTooltip content={<ChartTooltipContent />} />
-                  <Area
+                  <Line
                     type="monotone"
                     dataKey="consumo"
-                    fill="var(--color-consumo)"
-                    fillOpacity={0.3}
                     stroke="var(--color-consumo)"
+                    strokeWidth={2}
+                    dot={false}
                   />
-                </AreaChart>
+                  <Line
+                    type="monotone"
+                    dataKey="prediccion"
+                    stroke="var(--color-prediccion)"
+                    strokeWidth={2}
+                    strokeDasharray="6 4"
+                    dot={false}
+                    connectNulls
+                  />
+                </LineChart>
               </ChartContainer>
             </CardContent>
           </Card>

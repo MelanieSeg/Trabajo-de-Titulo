@@ -328,6 +328,62 @@ class AuditIntegrityResponse(BaseModel):
     message: str
 
 
+class ResourceCatalogItem(BaseModel):
+    code: str
+    name: str
+    category: str
+    unit: str
+    regulatory_body: str | None
+    description: str | None
+
+
+class ResourceOverviewCard(BaseModel):
+    label: str
+    value: float
+    unit: str
+    change_pct: float
+
+
+class ResourceMonthlyPoint(BaseModel):
+    year: int
+    month: int
+    mes: str
+    consumo: float
+    costo: float
+
+
+class ResourceAreaPoint(BaseModel):
+    area: str
+    consumo: float
+    percentage: float
+
+
+class ResourcePredictionPoint(BaseModel):
+    year: int
+    month: int
+    mes: str
+    value: float
+
+
+class ResourceAlertItem(BaseModel):
+    id: int
+    severity: Literal["critical", "warning", "info"]
+    title: str
+    description: str
+    year: int | None
+    month: int | None
+    created_at: datetime
+
+
+class ResourceOverviewResponse(BaseModel):
+    resource: ResourceCatalogItem
+    cards: list[ResourceOverviewCard]
+    monthly: list[ResourceMonthlyPoint]
+    areas: list[ResourceAreaPoint]
+    predictions: list[ResourcePredictionPoint]
+    alerts: list[ResourceAlertItem]
+
+
 class APIError(BaseModel):
     model_config = ConfigDict(extra="allow")
 

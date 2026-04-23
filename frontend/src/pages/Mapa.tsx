@@ -21,6 +21,16 @@ function clamp(value: number, min: number, max: number): number {
 export default function MapaConsumo() {
   const { data, isLoading, isError } = useOperationsOverview();
   const zones = data?.map ?? [];
+  const energyCatalog = data?.energy_catalog ?? [];
+  const resourceLabelMap = useMemo(
+    () =>
+      Object.fromEntries(
+        energyCatalog
+          .filter((item) => item.code !== "electricity" && item.code !== "water")
+          .map((item) => [item.code, item.label])
+      ),
+    [energyCatalog]
+  );
 
   const zoneStats = useMemo(() => {
     if (!zones.length) {
@@ -35,36 +45,56 @@ export default function MapaConsumo() {
         point: { x: number; y: number };
         efficiencyPct: number;
         spendSharePct: number;
+        resourceTotal: number;
+        topResources: Array<{ code: string; label: string; value: number }>;
       }>;
     }
 
     const totalElectricity = zones.reduce((sum, zone) => sum + zone.electricity, 0);
     const totalWater = zones.reduce((sum, zone) => sum + zone.water, 0);
+    const totalResource = zones.reduce(
+      (sum, zone) => sum + Object.values(zone.resources ?? {}).reduce((inner, value) => inner + value, 0),
+      0
+    );
 
-    const combinedValues = zones.map((zone) => zone.electricity + zone.water * 2.1);
+    const combinedValues = zones.map(
+      (zone) => zone.electricity + zone.water * 2.1 + Object.values(zone.resources ?? {}).reduce((sum, value) => sum + value, 0)
+    );
     const minCombined = Math.min(...combinedValues);
     const maxCombined = Math.max(...combinedValues);
     const spread = maxCombined - minCombined;
 
     return zones.map((zone, index) => {
       const point = MAP_NODE_LAYOUT[index % MAP_NODE_LAYOUT.length];
+      const resourceTotal = Object.values(zone.resources ?? {}).reduce((sum, value) => sum + value, 0);
 
       const electricityShare = totalElectricity > 0 ? (zone.electricity / totalElectricity) * 100 : 0;
       const waterShare = totalWater > 0 ? (zone.water / totalWater) * 100 : 0;
-      const spendSharePct = electricityShare * 0.7 + waterShare * 0.3;
+      const resourceShare = totalResource > 0 ? (resourceTotal / totalResource) * 100 : 0;
+      const spendSharePct = electricityShare * 0.5 + waterShare * 0.2 + resourceShare * 0.3;
 
-      const combined = zone.electricity + zone.water * 2.1;
+      const combined = zone.electricity + zone.water * 2.1 + resourceTotal;
       const efficiencyRaw = spread <= 0 ? 85 : 100 - ((combined - minCombined) / spread) * 35;
       const efficiencyPct = clamp(efficiencyRaw, 55, 100);
+      const topResources = Object.entries(zone.resources ?? {})
+        .filter(([, value]) => value > 0)
+        .sort((a, b) => b[1] - a[1])
+        .map(([code, value]) => ({
+          code,
+          label: resourceLabelMap[code] ?? code,
+          value,
+        }));
 
       return {
         ...zone,
         point,
         efficiencyPct,
         spendSharePct,
+        resourceTotal,
+        topResources,
       };
     });
-  }, [zones]);
+  }, [resourceLabelMap, zones]);
 
   return (
     <DashboardLayout>
@@ -159,6 +189,14 @@ export default function MapaConsumo() {
                               <DollarSign className="h-3 w-3 text-yellow-500" />
                               Gasto est.: <span className="text-foreground font-medium">{zone.spendSharePct.toFixed(1)}%</span>
                             </p>
+                            {zone.topResources[0] && (
+                              <p className="text-[10px] text-muted-foreground">
+                                Principal:{" "}
+                                <span className="text-foreground font-medium">
+                                  {zone.topResources[0].label}
+                                </span>
+                              </p>
+                            )}
                           </div>
                         </div>
                       );
@@ -191,6 +229,14 @@ export default function MapaConsumo() {
                   <Droplets className="h-3 w-3 text-blue-500" />
                   <span>{zone.water.toLocaleString("es-CL")} m³</span>
                 </div>
+                {zone.topResources.map((resource) => (
+                  <div key={`${zone.id}-${resource.code}`} className="flex items-center justify-between text-xs">
+                    <span className="text-muted-foreground">{resource.label}</span>
+                    <span className="font-medium text-foreground">
+                      {resource.value.toLocaleString("es-CL", { maximumFractionDigits: 2 })}
+                    </span>
+                  </div>
+                ))}
                 <div className="flex items-center justify-between text-xs pt-1">
                   <span className="text-muted-foreground">Eficiencia</span>
                   <span className="font-medium text-foreground">{zone.efficiencyPct.toFixed(1)}%</span>

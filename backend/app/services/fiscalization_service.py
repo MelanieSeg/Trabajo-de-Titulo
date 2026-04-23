@@ -30,6 +30,9 @@ from app.db.models import (
     MeasurementCertificate,
     MeterCalibration,
     MonthlyConsumption,
+    ResourceAreaDistribution,
+    ResourceMonthlyConsumption,
+    ResourceType,
     SmartAlert,
 )
 from app.services.activity_service import log_activity
@@ -942,6 +945,15 @@ def _collect_raw_datasets(db: Session) -> dict[str, list[dict[str, Any]]]:
         ],
         "certifiable_reports": [_to_row_dict(item) for item in db.scalars(select(CertifiableReport).order_by(CertifiableReport.id.asc())).all()],
         "audit_trail_blocks": [_to_row_dict(item) for item in db.scalars(select(AuditTrailBlock).order_by(AuditTrailBlock.id.asc())).all()],
+        "resource_types": [_to_row_dict(item) for item in db.scalars(select(ResourceType).order_by(ResourceType.id.asc())).all()],
+        "resource_monthly_consumptions": [
+            _to_row_dict(item)
+            for item in db.scalars(select(ResourceMonthlyConsumption).order_by(ResourceMonthlyConsumption.id.asc())).all()
+        ],
+        "resource_area_distributions": [
+            _to_row_dict(item)
+            for item in db.scalars(select(ResourceAreaDistribution).order_by(ResourceAreaDistribution.id.asc())).all()
+        ],
     }
     return datasets
 

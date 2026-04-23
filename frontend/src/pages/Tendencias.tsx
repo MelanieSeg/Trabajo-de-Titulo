@@ -7,6 +7,12 @@ import { useOperationsOverview } from "@/hooks/useOperationsOverview";
 export default function Tendencias() {
   const { data, isLoading, isError } = useOperationsOverview();
   const chartData = data?.timeseries ?? [];
+  const energyCatalog = data?.energy_catalog?.map((item) => ({
+    code: item.code,
+    label: item.label,
+    unit: item.unit,
+  }));
+  const trendChanges = data?.trends.changes ?? [];
 
   return (
     <DashboardLayout>
@@ -19,31 +25,26 @@ export default function Tendencias() {
         {isLoading && <Card className="p-4 text-sm text-muted-foreground">Cargando tendencias...</Card>}
         {isError && <Card className="p-4 text-sm text-destructive">No se pudieron cargar tendencias.</Card>}
 
-        <ConsumptionChart data={chartData} />
+        <ConsumptionChart
+          data={chartData}
+          energyCatalog={energyCatalog}
+          subtitle="Evolución histórica y proyección de todas las energías"
+        />
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          <Card>
-            <CardContent className="p-4">
-              <div className="flex items-center gap-2 mb-2">
-                <TrendingUp className="h-4 w-4 text-yellow-500" />
-                <span className="text-sm font-medium">Electricidad</span>
-              </div>
-              <p className="text-xs text-muted-foreground">
-                Variación del período: {data?.trends.electricity_change_pct.toFixed(1) ?? "0.0"}%.
-              </p>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardContent className="p-4">
-              <div className="flex items-center gap-2 mb-2">
-                <TrendingUp className="h-4 w-4 text-blue-500" />
-                <span className="text-sm font-medium">Agua</span>
-              </div>
-              <p className="text-xs text-muted-foreground">
-                Variación del período: {data?.trends.water_change_pct.toFixed(1) ?? "0.0"}%.
-              </p>
-            </CardContent>
-          </Card>
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+          {trendChanges.map((item) => (
+            <Card key={item.code}>
+              <CardContent className="p-4">
+                <div className="flex items-center gap-2 mb-2">
+                  <TrendingUp className={`h-4 w-4 ${item.change_pct > 0 ? "text-yellow-500" : "text-green-600"}`} />
+                  <span className="text-sm font-medium">{item.label}</span>
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  Variación del período: {item.change_pct.toFixed(1)}% ({item.unit}).
+                </p>
+              </CardContent>
+            </Card>
+          ))}
         </div>
 
         <Card>
