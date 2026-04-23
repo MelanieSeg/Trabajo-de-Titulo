@@ -234,3 +234,166 @@ class CustomMetric(Base):
     target_value: Mapped[float] = mapped_column(Float, nullable=False)
     current_value: Mapped[float] = mapped_column(Float, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+
+class ComplianceStandard(Base):
+    __tablename__ = "compliance_standards"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    code: Mapped[str] = mapped_column(String(40), nullable=False, unique=True)
+    name: Mapped[str] = mapped_column(String(180), nullable=False)
+    version: Mapped[Optional[str]] = mapped_column(String(40), nullable=True)
+    description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    source_url: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+
+class LegalRequirement(Base):
+    __tablename__ = "legal_requirements"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    standard_id: Mapped[Optional[int]] = mapped_column(
+        ForeignKey("compliance_standards.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    code: Mapped[str] = mapped_column(String(60), nullable=False, unique=True)
+    title: Mapped[str] = mapped_column(String(255), nullable=False)
+    utility: Mapped[str] = mapped_column(String(30), nullable=False)
+    metric_name: Mapped[str] = mapped_column(String(80), nullable=False)
+    limit_operator: Mapped[str] = mapped_column(String(8), nullable=False, default="<=")
+    limit_value: Mapped[float] = mapped_column(Float, nullable=False)
+    limit_unit: Mapped[str] = mapped_column(String(30), nullable=False)
+    warning_ratio: Mapped[float] = mapped_column(Float, nullable=False, default=0.9)
+    severity_on_breach: Mapped[str] = mapped_column(String(20), nullable=False, default="critical")
+    jurisdiction: Mapped[Optional[str]] = mapped_column(String(120), nullable=True)
+    legal_reference: Mapped[Optional[str]] = mapped_column(String(180), nullable=True)
+    effective_from: Mapped[Optional[Date]] = mapped_column(Date, nullable=True)
+    effective_to: Mapped[Optional[Date]] = mapped_column(Date, nullable=True)
+    is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+    __table_args__ = (
+        CheckConstraint("warning_ratio >= 0 AND warning_ratio <= 1", name="ck_legal_requirements_warning_ratio"),
+        CheckConstraint(
+            "severity_on_breach IN ('critical', 'warning', 'info')",
+            name="ck_legal_requirements_severity",
+        ),
+    )
+
+
+class ComplianceAssessment(Base):
+    __tablename__ = "compliance_assessments"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    requirement_id: Mapped[int] = mapped_column(
+        ForeignKey("legal_requirements.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    year: Mapped[int] = mapped_column(Integer, nullable=False)
+    month: Mapped[int] = mapped_column(Integer, nullable=False)
+    observed_value: Mapped[float] = mapped_column(Float, nullable=False)
+    limit_value: Mapped[float] = mapped_column(Float, nullable=False)
+    status: Mapped[str] = mapped_column(String(20), nullable=False)
+    risk_level: Mapped[str] = mapped_column(String(20), nullable=False)
+    risk_score: Mapped[float] = mapped_column(Float, nullable=False, default=0)
+    details: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
+    evaluated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+    __table_args__ = (
+        UniqueConstraint("requirement_id", "year", "month", name="uq_compliance_assessment_req_period"),
+        CheckConstraint("month >= 1 AND month <= 12", name="ck_compliance_assessment_month"),
+        CheckConstraint("year >= 2000 AND year <= 2100", name="ck_compliance_assessment_year"),
+        CheckConstraint(
+            "status IN ('compliant', 'warning', 'breach')",
+            name="ck_compliance_assessment_status",
+        ),
+        CheckConstraint(
+            "risk_level IN ('low', 'medium', 'high', 'critical')",
+            name="ck_compliance_assessment_risk_level",
+        ),
+    )
+
+
+class CertifiableReport(Base):
+    __tablename__ = "certifiable_reports"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    report_code: Mapped[str] = mapped_column(String(80), nullable=False, unique=True)
+    report_name: Mapped[str] = mapped_column(String(180), nullable=False)
+    report_format: Mapped[str] = mapped_column(String(16), nullable=False)
+    year: Mapped[int] = mapped_column(Integer, nullable=False)
+    month: Mapped[int] = mapped_column(Integer, nullable=False)
+    sha256_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    digital_signature: Mapped[str] = mapped_column(String(128), nullable=False)
+    timestamp_utc: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    generated_by: Mapped[str] = mapped_column(String(120), nullable=False, default="system")
+    metadata_json: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+    __table_args__ = (
+        CheckConstraint("month >= 1 AND month <= 12", name="ck_certifiable_report_month"),
+        CheckConstraint("year >= 2000 AND year <= 2100", name="ck_certifiable_report_year"),
+        CheckConstraint("report_format IN ('pdf', 'xlsx')", name="ck_certifiable_report_format"),
+    )
+
+
+class MeterCalibration(Base):
+    __tablename__ = "meter_calibrations"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    meter_code: Mapped[str] = mapped_column(String(80), nullable=False)
+    meter_name: Mapped[str] = mapped_column(String(120), nullable=False)
+    facility_name: Mapped[Optional[str]] = mapped_column(String(150), nullable=True)
+    utility: Mapped[str] = mapped_column(String(30), nullable=False)
+    calibrated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    valid_until: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    performed_by: Mapped[str] = mapped_column(String(120), nullable=False)
+    status: Mapped[str] = mapped_column(String(20), nullable=False, default="valid")
+    metadata_json: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+    __table_args__ = (
+        CheckConstraint(
+            "status IN ('valid', 'expiring', 'expired')",
+            name="ck_meter_calibrations_status",
+        ),
+    )
+
+
+class MeasurementCertificate(Base):
+    __tablename__ = "measurement_certificates"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    calibration_id: Mapped[int] = mapped_column(
+        ForeignKey("meter_calibrations.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    certificate_number: Mapped[str] = mapped_column(String(80), nullable=False, unique=True)
+    issued_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    issuer: Mapped[str] = mapped_column(String(120), nullable=False)
+    sha256_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    digital_signature: Mapped[str] = mapped_column(String(128), nullable=False)
+    payload: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+
+class AuditTrailBlock(Base):
+    __tablename__ = "audit_trail_blocks"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    entity_type: Mapped[str] = mapped_column(String(60), nullable=False)
+    entity_id: Mapped[str] = mapped_column(String(120), nullable=False)
+    action: Mapped[str] = mapped_column(String(80), nullable=False)
+    payload_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    previous_hash: Mapped[str] = mapped_column(String(64), nullable=False, default="GENESIS")
+    block_hash: Mapped[str] = mapped_column(String(64), nullable=False, unique=True)
+    digital_signature: Mapped[str] = mapped_column(String(128), nullable=False)
+    actor: Mapped[str] = mapped_column(String(120), nullable=False, default="system")
+    metadata_json: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+    __table_args__ = (
+        UniqueConstraint("entity_type", "entity_id", "action", "payload_hash", name="uq_audit_trail_block_event"),
+    )

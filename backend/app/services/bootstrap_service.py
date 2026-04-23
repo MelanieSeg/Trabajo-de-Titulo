@@ -8,7 +8,19 @@ from sqlalchemy.orm import Session
 from app.core.config import get_settings
 from app.core.security import hash_password
 from app.db.base import Base
-from app.db.models import ETLSchedule, EfficiencyTarget, MonthlyConsumption, User
+from app.db.models import (
+    AuditTrailBlock,
+    CertifiableReport,
+    ComplianceAssessment,
+    ComplianceStandard,
+    ETLSchedule,
+    EfficiencyTarget,
+    LegalRequirement,
+    MeasurementCertificate,
+    MeterCalibration,
+    MonthlyConsumption,
+    User,
+)
 from app.db.session import engine
 from app.services.alert_service import add_info_alert_if_empty, get_or_create_alert_config, regenerate_anomaly_alerts
 from app.services.etl_service import run_etl_from_csv
@@ -31,6 +43,19 @@ def run_compat_migrations(db: Session) -> None:
     db.execute(text("UPDATE app_users SET role = 'USER' WHERE role IS NULL"))
     db.execute(text("ALTER TABLE alert_configs ADD COLUMN IF NOT EXISTS notify_email BOOLEAN NOT NULL DEFAULT TRUE"))
     db.execute(text("ALTER TABLE alert_configs ADD COLUMN IF NOT EXISTS notify_in_app BOOLEAN NOT NULL DEFAULT TRUE"))
+    # Crear únicamente las nuevas tablas de fiscalización si aún no existen.
+    Base.metadata.create_all(
+        bind=engine,
+        tables=[
+            ComplianceStandard.__table__,
+            LegalRequirement.__table__,
+            ComplianceAssessment.__table__,
+            CertifiableReport.__table__,
+            MeterCalibration.__table__,
+            MeasurementCertificate.__table__,
+            AuditTrailBlock.__table__,
+        ],
+    )
 
 
 def ensure_defaults(db: Session) -> None:
@@ -63,6 +88,111 @@ def ensure_defaults(db: Session) -> None:
 
     # Aplicar configuración en tiempo de ejecución de nivel superior desde app/platform-config.json
     apply_platform_config_to_db(db, force_reload=False)
+
+    # Estándares de referencia para cumplimiento y fiscalización.
+    default_standards = [
+        {
+            "code": "ISO50001",
+            "name": "ISO 50001 - Energy Management Systems",
+            "version": "2018",
+            "description": "Requisitos para establecer, implementar y mejorar un SGE.",
+            "source_url": "https://www.iso.org/standard/69426.html",
+        },
+        {
+            "code": "ISO14001",
+            "name": "ISO 14001 - Environmental Management Systems",
+            "version": "2015",
+            "description": "Marco de gestión ambiental orientado a cumplimiento y mejora continua.",
+            "source_url": "https://www.iso.org/iso-14001-environmental-management.html",
+        },
+        {
+            "code": "LEGAL-LOCAL-BASE",
+            "name": "Marco legal operativo local",
+            "version": "2026",
+            "description": "Requisitos legales configurables para fiscalización de consumos y riesgos.",
+            "source_url": None,
+        },
+    ]
+    standards_by_code: dict[str, ComplianceStandard] = {}
+    for payload in default_standards:
+        row = db.scalar(select(ComplianceStandard).where(ComplianceStandard.code == payload["code"]))
+        if not row:
+            row = ComplianceStandard(**payload)
+            db.add(row)
+            db.flush()
+        else:
+            row.name = payload["name"]
+            row.version = payload["version"]
+            row.description = payload["description"]
+            row.source_url = payload["source_url"]
+            row.is_active = True
+        standards_by_code[payload["code"]] = row
+
+    default_requirements = [
+        {
+            "code": "CL-ELEC-MENSUAL-LIM-001",
+            "title": "Límite mensual de consumo eléctrico consolidado",
+            "utility": "electricity",
+            "metric_name": "electricity_kwh",
+            "limit_operator": "<=",
+            "limit_value": 7000.0,
+            "limit_unit": "kWh",
+            "warning_ratio": 0.9,
+            "severity_on_breach": "critical",
+            "jurisdiction": "CL",
+            "legal_reference": "Límite operacional configurable",
+            "standard_code": "LEGAL-LOCAL-BASE",
+        },
+        {
+            "code": "CL-AGUA-MENSUAL-LIM-001",
+            "title": "Límite mensual de consumo de agua consolidado",
+            "utility": "water",
+            "metric_name": "water_m3",
+            "limit_operator": "<=",
+            "limit_value": 3200.0,
+            "limit_unit": "m3",
+            "warning_ratio": 0.9,
+            "severity_on_breach": "critical",
+            "jurisdiction": "CL",
+            "legal_reference": "Límite operacional configurable",
+            "standard_code": "LEGAL-LOCAL-BASE",
+        },
+    ]
+
+    for payload in default_requirements:
+        existing = db.scalar(select(LegalRequirement).where(LegalRequirement.code == payload["code"]))
+        standard = standards_by_code.get(payload["standard_code"])
+        if existing:
+            existing.standard_id = standard.id if standard else None
+            existing.title = payload["title"]
+            existing.utility = payload["utility"]
+            existing.metric_name = payload["metric_name"]
+            existing.limit_operator = payload["limit_operator"]
+            existing.limit_value = payload["limit_value"]
+            existing.limit_unit = payload["limit_unit"]
+            existing.warning_ratio = payload["warning_ratio"]
+            existing.severity_on_breach = payload["severity_on_breach"]
+            existing.jurisdiction = payload["jurisdiction"]
+            existing.legal_reference = payload["legal_reference"]
+            existing.is_active = True
+        else:
+            db.add(
+                LegalRequirement(
+                    standard_id=standard.id if standard else None,
+                    code=payload["code"],
+                    title=payload["title"],
+                    utility=payload["utility"],
+                    metric_name=payload["metric_name"],
+                    limit_operator=payload["limit_operator"],
+                    limit_value=payload["limit_value"],
+                    limit_unit=payload["limit_unit"],
+                    warning_ratio=payload["warning_ratio"],
+                    severity_on_breach=payload["severity_on_breach"],
+                    jurisdiction=payload["jurisdiction"],
+                    legal_reference=payload["legal_reference"],
+                    is_active=True,
+                )
+            )
 
 
 def seed_test_user(db: Session) -> None:

@@ -37,6 +37,7 @@ const Empresa = lazy(() => import("./pages/Empresa.tsx"));
 const Configuracion = lazy(() => import("./pages/Configuracion.tsx"));
 const Seguridad = lazy(() => import("./pages/Seguridad.tsx"));
 const Ayuda = lazy(() => import("./pages/Ayuda.tsx"));
+const Fiscalizacion = lazy(() => import("./pages/Fiscalizacion.tsx"));
 
 const queryClient = new QueryClient();
 
@@ -262,6 +263,14 @@ const App = () => (
                   element={
                     <ProtectedRoute>
                       <Ayuda />
+                    </ProtectedRoute>
+                  }
+                />
+                <Route
+                  path="/fiscalizacion"
+                  element={
+                    <ProtectedRoute>
+                      <Fiscalizacion />
                     </ProtectedRoute>
                   }
                 />

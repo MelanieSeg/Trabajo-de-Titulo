@@ -2,7 +2,7 @@ import {
   LayoutDashboard, Zap, Droplets, BarChart3, TrendingUp,
   Bell, Settings, FileText, Upload, Users, Building2,
   Leaf, Target, Calendar, Download, Shield, HelpCircle,
-  Database, Brain, Gauge, AlertTriangle, PieChart, Map
+  Database, Brain, Gauge, AlertTriangle, PieChart, Map, Scale
 } from "lucide-react";
 import { NavLink } from "@/components/NavLink";
 import {
@@ -40,6 +40,7 @@ const adminItems = [
   { title: "Alertas", url: "/alertas", icon: Bell },
   { title: "Usuarios", url: "/usuarios", icon: Users },
   { title: "Empresa", url: "/empresa", icon: Building2 },
+  { title: "Fiscalización", url: "/fiscalizacion", icon: Scale },
   { title: "Configuración", url: "/configuracion", icon: Settings },
   { title: "Seguridad", url: "/seguridad", icon: Shield },
   { title: "Ayuda", url: "/ayuda", icon: HelpCircle },

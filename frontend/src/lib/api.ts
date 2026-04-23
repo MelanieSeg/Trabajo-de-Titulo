@@ -620,3 +620,244 @@ export async function exportPredictionsJson(): Promise<Blob> {
   const overview = await fetchOperationsOverview();
   return new Blob([JSON.stringify(overview.predictions.series, null, 2)], { type: "application/json" });
 }
+
+export interface ComplianceStandard {
+  id: number;
+  code: string;
+  name: string;
+  version: string | null;
+  description: string | null;
+  source_url: string | null;
+  is_active: boolean;
+}
+
+export interface ComplianceRequirement {
+  id: number;
+  code: string;
+  title: string;
+  utility: string;
+  metric_name: string;
+  limit_operator: "<=" | "<" | ">=" | ">" | "==";
+  limit_value: number;
+  limit_unit: string;
+  warning_ratio: number;
+  severity_on_breach: AlertSeverity;
+  jurisdiction: string | null;
+  legal_reference: string | null;
+  standard_code: string | null;
+  is_active: boolean;
+}
+
+export interface ComplianceEvaluation {
+  requirement_id: number;
+  code: string;
+  title: string;
+  utility: string;
+  metric_name: string;
+  observed_value: number;
+  limit_operator: string;
+  limit_value: number;
+  unit: string;
+  status: "compliant" | "warning" | "breach";
+  risk_level: "low" | "medium" | "high" | "critical";
+  risk_score: number;
+  legal_reference: string | null;
+}
+
+export interface ComplianceSummary {
+  year: number;
+  month: number;
+  month_label: string;
+  summary: { compliant: number; warning: number; breach: number };
+  evaluations: ComplianceEvaluation[];
+}
+
+export interface CertifiableReportMetadata {
+  report_code: string;
+  report_name: string;
+  report_format: "pdf" | "xlsx";
+  year: number;
+  month: number;
+  generated_at: string;
+  sha256_hash: string;
+  digital_signature: string;
+  verification_token: string;
+}
+
+export interface CalibrationPayload {
+  meter_code: string;
+  meter_name: string;
+  facility_name?: string;
+  utility: string;
+  performed_by: string;
+  calibrated_at: string;
+  valid_until: string;
+  notes?: string;
+}
+
+export interface CalibrationItem {
+  id: number;
+  meter_code: string;
+  meter_name: string;
+  facility_name: string | null;
+  utility: string;
+  calibrated_at: string;
+  valid_until: string;
+  performed_by: string;
+  status: "valid" | "expiring" | "expired";
+  certificate_number: string | null;
+}
+
+export interface CalibrationCertificate {
+  calibration_id: number;
+  certificate_number: string;
+  issued_at: string;
+  expires_at: string;
+  issuer: string;
+  sha256_hash: string;
+  digital_signature: string;
+  payload: Record<string, unknown>;
+}
+
+export interface AuditChainValidation {
+  valid: boolean;
+  total_blocks: number;
+  checked_at: string;
+  broken_block_id: number | null;
+  message: string;
+}
+
+function withQuery(
+  basePath: string,
+  params: Record<string, string | number | boolean | undefined | null>
+): string {
+  const query = new URLSearchParams();
+  Object.entries(params).forEach(([key, value]) => {
+    if (value !== undefined && value !== null && value !== "") {
+      query.set(key, String(value));
+    }
+  });
+  const raw = query.toString();
+  return raw ? `${basePath}?${raw}` : basePath;
+}
+
+export function fetchComplianceStandards(): Promise<ComplianceStandard[]> {
+  return request<ComplianceStandard[]>("/fiscalizacion/standards");
+}
+
+export function fetchComplianceRequirements(activeOnly: boolean = true): Promise<ComplianceRequirement[]> {
+  return request<ComplianceRequirement[]>(
+    withQuery("/fiscalizacion/requirements", { active_only: activeOnly })
+  );
+}
+
+export function upsertComplianceRequirement(
+  payload: Omit<ComplianceRequirement, "id" | "is_active" | "standard_code"> & { standard_code?: string | null }
+): Promise<ComplianceRequirement> {
+  return request<ComplianceRequirement>("/fiscalizacion/requirements", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export function fetchComplianceSummary(year?: number, month?: number): Promise<ComplianceSummary> {
+  return request<ComplianceSummary>(withQuery("/fiscalizacion/compliance/summary", { year, month }));
+}
+
+export function evaluateCompliance(year?: number, month?: number): Promise<ComplianceSummary> {
+  return request<ComplianceSummary>(withQuery("/fiscalizacion/compliance/evaluate", { year, month }), {
+    method: "POST",
+  });
+}
+
+export function fetchCertifiableReportHistory(limit: number = 20): Promise<CertifiableReportMetadata[]> {
+  return request<CertifiableReportMetadata[]>(
+    withQuery("/fiscalizacion/reports/history", { limit })
+  );
+}
+
+export function generateCertifiableReportMetadata(
+  reportFormat: "pdf" | "xlsx",
+  year?: number,
+  month?: number
+): Promise<CertifiableReportMetadata> {
+  return request<CertifiableReportMetadata>(
+    withQuery("/fiscalizacion/reports/certifiable", {
+      report_format: reportFormat,
+      year,
+      month,
+    })
+  );
+}
+
+export async function downloadCertifiableReport(
+  reportFormat: "pdf" | "xlsx",
+  year?: number,
+  month?: number
+): Promise<{
+  blob: Blob;
+  filename: string;
+  reportCode: string | null;
+  sha256Hash: string | null;
+  signature: string | null;
+}> {
+  const token = getToken();
+  const headers = new Headers();
+  if (token) headers.set("Authorization", `Bearer ${token}`);
+
+  const response = await fetch(
+    `${API_BASE_URL}${withQuery("/fiscalizacion/reports/certifiable/download", {
+      report_format: reportFormat,
+      year,
+      month,
+    })}`,
+    { headers }
+  );
+  if (!response.ok) {
+    throw new Error("No se pudo generar el reporte certificable.");
+  }
+
+  const blob = await response.blob();
+  const disposition = response.headers.get("content-disposition") ?? "";
+  const matched = disposition.match(/filename=([^;]+)/i);
+  const filename = matched ? matched[1].replace(/"/g, "") : `reporte_certificable.${reportFormat}`;
+
+  return {
+    blob,
+    filename,
+    reportCode: response.headers.get("x-report-code"),
+    sha256Hash: response.headers.get("x-report-hash"),
+    signature: response.headers.get("x-report-signature"),
+  };
+}
+
+export function fetchCalibrations(limit: number = 100): Promise<CalibrationItem[]> {
+  return request<CalibrationItem[]>(withQuery("/fiscalizacion/calibrations", { limit }));
+}
+
+export function createCalibration(payload: CalibrationPayload): Promise<CalibrationItem> {
+  return request<CalibrationItem>("/fiscalizacion/calibrations", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export function fetchCalibrationCertificate(calibrationId: number): Promise<CalibrationCertificate> {
+  return request<CalibrationCertificate>(`/fiscalizacion/calibrations/${calibrationId}/certificate`);
+}
+
+export function verifyAuditChainIntegrity(): Promise<AuditChainValidation> {
+  return request<AuditChainValidation>("/fiscalizacion/audit/chain/verify");
+}
+
+export function exportAuditLogs(format: "csv" | "json" = "csv"): Promise<Blob> {
+  return exportBlob(withQuery("/fiscalizacion/audit/logs/export", { export_format: format }));
+}
+
+export function exportAuditChain(format: "csv" | "json" = "csv"): Promise<Blob> {
+  return exportBlob(withQuery("/fiscalizacion/audit/chain/export", { export_format: format }));
+}
+
+export function exportRawAuditableData(format: "json" | "zip" = "zip"): Promise<Blob> {
+  return exportBlob(withQuery("/fiscalizacion/export/raw", { export_format: format }));
+}

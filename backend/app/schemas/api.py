@@ -207,6 +207,127 @@ class OperationsSettingsUpdate(BaseModel):
     etl_cron_expression: str | None = None
 
 
+class ComplianceStandardItem(BaseModel):
+    id: int
+    code: str
+    name: str
+    version: str | None
+    description: str | None
+    source_url: str | None
+    is_active: bool
+
+
+class LegalRequirementItem(BaseModel):
+    id: int
+    code: str
+    title: str
+    utility: str
+    metric_name: str
+    limit_operator: str
+    limit_value: float
+    limit_unit: str
+    warning_ratio: float
+    severity_on_breach: Literal["critical", "warning", "info"]
+    jurisdiction: str | None
+    legal_reference: str | None
+    standard_code: str | None
+    is_active: bool
+
+
+class LegalRequirementCreate(BaseModel):
+    code: str
+    title: str
+    utility: str
+    metric_name: str
+    limit_operator: Literal["<=", "<", ">=", ">", "=="] = "<="
+    limit_value: float = Field(gt=0)
+    limit_unit: str
+    warning_ratio: float = Field(default=0.9, ge=0, le=1)
+    severity_on_breach: Literal["critical", "warning", "info"] = "critical"
+    jurisdiction: str | None = None
+    legal_reference: str | None = None
+    standard_code: str | None = None
+
+
+class ComplianceEvaluationItem(BaseModel):
+    requirement_id: int
+    code: str
+    title: str
+    utility: str
+    metric_name: str
+    observed_value: float
+    limit_operator: str
+    limit_value: float
+    unit: str
+    status: Literal["compliant", "warning", "breach"]
+    risk_level: Literal["low", "medium", "high", "critical"]
+    risk_score: float
+    legal_reference: str | None
+
+
+class ComplianceSummaryResponse(BaseModel):
+    year: int
+    month: int
+    month_label: str
+    summary: dict[str, int]
+    evaluations: list[ComplianceEvaluationItem]
+
+
+class CertifiableReportMetadata(BaseModel):
+    report_code: str
+    report_name: str
+    report_format: Literal["pdf", "xlsx"]
+    year: int
+    month: int
+    generated_at: datetime
+    sha256_hash: str
+    digital_signature: str
+    verification_token: str
+
+
+class CalibrationCreate(BaseModel):
+    meter_code: str
+    meter_name: str
+    facility_name: str | None = None
+    utility: str = Field(default="electricity")
+    performed_by: str
+    calibrated_at: datetime
+    valid_until: datetime
+    notes: str | None = None
+
+
+class CalibrationItem(BaseModel):
+    id: int
+    meter_code: str
+    meter_name: str
+    facility_name: str | None
+    utility: str
+    calibrated_at: datetime
+    valid_until: datetime
+    performed_by: str
+    status: Literal["valid", "expiring", "expired"]
+    certificate_number: str | None
+
+
+class CalibrationCertificateResponse(BaseModel):
+    calibration_id: int
+    certificate_number: str
+    issued_at: datetime
+    expires_at: datetime
+    issuer: str
+    sha256_hash: str
+    digital_signature: str
+    payload: dict[str, Any]
+
+
+class AuditIntegrityResponse(BaseModel):
+    valid: bool
+    total_blocks: int
+    checked_at: datetime
+    broken_block_id: int | None = None
+    message: str
+
+
 class APIError(BaseModel):
     model_config = ConfigDict(extra="allow")
 
