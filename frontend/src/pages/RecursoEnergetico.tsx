@@ -85,6 +85,57 @@ const RESOURCE_UI: Record<
   },
 };
 
+const RESOURCE_COLORS: Record<
+  string,
+  { consumo: string; prediccion: string; costo: string }
+> = {
+  gas_natural: {
+    consumo: "hsl(140 60% 45%)",
+    prediccion: "hsl(140 50% 35%)",
+    costo: "hsl(42 90% 52%)",
+  },
+  diesel: {
+    consumo: "hsl(24 82% 50%)",
+    prediccion: "hsl(24 72% 40%)",
+    costo: "hsl(42 90% 52%)",
+  },
+  gasolina: {
+    consumo: "hsl(12 78% 52%)",
+    prediccion: "hsl(12 68% 42%)",
+    costo: "hsl(42 90% 52%)",
+  },
+  glp_propano: {
+    consumo: "hsl(185 75% 45%)",
+    prediccion: "hsl(185 65% 35%)",
+    costo: "hsl(42 90% 52%)",
+  },
+  vapor_termica: {
+    consumo: "hsl(8 70% 52%)",
+    prediccion: "hsl(8 60% 42%)",
+    costo: "hsl(42 90% 52%)",
+  },
+  energia_renovable: {
+    consumo: "hsl(122 58% 44%)",
+    prediccion: "hsl(122 50% 34%)",
+    costo: "hsl(42 90% 52%)",
+  },
+  residuos: {
+    consumo: "hsl(210 12% 48%)",
+    prediccion: "hsl(210 12% 36%)",
+    costo: "hsl(42 90% 52%)",
+  },
+  emisiones_co2e: {
+    consumo: "hsl(340 78% 52%)",
+    prediccion: "hsl(340 68% 42%)",
+    costo: "hsl(42 90% 52%)",
+  },
+  quimicos_consumibles: {
+    consumo: "hsl(275 62% 52%)",
+    prediccion: "hsl(275 52% 42%)",
+    costo: "hsl(42 90% 52%)",
+  },
+};
+
 function severityVariant(severity: string): "destructive" | "secondary" | "default" {
   if (severity === "critical") return "destructive";
   if (severity === "warning") return "secondary";
@@ -98,23 +149,28 @@ export default function RecursoEnergetico() {
 
   const ui = RESOURCE_UI[code];
   const Icon = ui?.icon ?? Fuel;
+  const resourceColors = RESOURCE_COLORS[code] ?? {
+    consumo: "hsl(152 60% 36%)",
+    prediccion: "hsl(280 60% 55%)",
+    costo: "hsl(42 90% 52%)",
+  };
 
   const chartConfig = useMemo(
     () => ({
       consumo: {
         label: `Consumo (${data?.resource.unit ?? "unidad"})`,
-        color: "hsl(var(--chart-1))",
+        color: resourceColors.consumo,
       },
       costo: {
         label: "Costo (USD)",
-        color: "hsl(var(--chart-2))",
+        color: resourceColors.costo,
       },
       prediccion: {
         label: `Predicción (${data?.resource.unit ?? "unidad"})`,
-        color: "hsl(var(--chart-3))",
+        color: resourceColors.prediccion,
       },
     }),
-    [data?.resource.unit]
+    [data?.resource.unit, resourceColors.consumo, resourceColors.costo, resourceColors.prediccion]
   );
 
   const mergedMonthly = useMemo(() => {
