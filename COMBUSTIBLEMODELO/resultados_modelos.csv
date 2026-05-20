@@ -1,0 +1,4 @@
+Modelo,MAE (L),RMSE (L),Error relativo %,Acepta (<10%)
+Regresión Lineal,959.8,2547.9,42.42,NO
+Árbol de Decisión,204.6,535.5,9.04,SÍ ✓
+Random Forest,329.6,1087.0,14.57,NO
