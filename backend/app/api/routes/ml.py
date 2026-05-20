@@ -20,9 +20,12 @@ def train_model(payload: MLTrainRequest, db: Session = Depends(get_db_session)) 
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     return MLTrainResponse(
-        model="RandomForestRegressor",
+        model="AutoML multi-modelo (por utilidad)",
         trained_records=result.trained_records,
         validation_mae=result.validation_mae,
+        accuracy_pct=result.accuracy_pct,
+        champion_models=result.champion_models,
+        model_benchmark=result.model_benchmark,
         predictions=[MLPredictionItem(**p) for p in result.predictions],
     )
 

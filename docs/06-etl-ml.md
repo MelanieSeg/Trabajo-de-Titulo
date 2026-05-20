@@ -11,6 +11,12 @@ CSV con columnas base:
 Opcionales:
 - `lighting_pct`, `hvac_pct`, `machinery_pct`, `offices_pct`, `others_pct`
 
+Carga por módulo (sin afectar otras vistas):
+- `POST /api/etl/upload/electricity` con columnas mínimas:
+  - `company_name`, `facility_name`, `year`, `month`, `electricity_kwh`, `electricity_cost_usd`
+- `POST /api/etl/upload/water` con columnas mínimas:
+  - `company_name`, `facility_name`, `year`, `month`, `water_m3`, `water_cost_usd`
+
 ### Proceso
 
 1. Validación de estructura de columnas.
@@ -28,12 +34,14 @@ Predicción de consumo mensual de electricidad y agua para horizonte futuro.
 
 ### Implementación actual
 
-- Modelo: `RandomForestRegressor`.
-- Features: tendencia temporal + estacionalidad + lag.
-- Validación: `TimeSeriesSplit` y MAE.
-- Persistencia: `ml_predictions`.
+- Pipeline multmodelo por utilidad: `RandomForestRegressor`, `GradientBoostingRegressor`, `KNeighborsRegressor`, `BayesianRidge`, `LinearRegression`.
+- Features: tendencia temporal + estacionalidad + lags (1-3) + promedio móvil + momentum.
+- Validación: `TimeSeriesSplit` con benchmark por modelo (`MAE`, `MAPE`, `R2`, precisión estimada).
+- Selección automática del modelo campeón para electricidad y agua.
+- Persistencia: `ml_predictions` (predicción consolidada) + `activity_logs` (benchmark y métricas de entrenamiento).
 
 ### Integración con negocio
 
 - Se generan alertas cuando la predicción proyecta incrementos por sobre umbrales.
-- Predicciones se reflejan en el dashboard junto con histórico.
+- Predicciones y precisión por utilidad se reflejan en el dashboard junto con histórico.
+- Comparativas anuales incluyen escenario sin software vs escenario optimizado/predictivo para visualizar ahorro proyectado.

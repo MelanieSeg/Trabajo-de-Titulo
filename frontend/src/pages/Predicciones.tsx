@@ -58,8 +58,12 @@ export default function Predicciones() {
           <Card>
             <CardContent className="p-4 text-center">
               <Brain className="h-8 w-8 mx-auto mb-2 text-primary" />
-              <p className="text-xs text-muted-foreground">Precisión del Modelo</p>
+              <p className="text-xs text-muted-foreground">Precisión Promedio</p>
               <p className="text-2xl font-bold">{(data?.predictions.accuracy_pct ?? 0).toFixed(1)}%</p>
+              <p className="text-[11px] text-muted-foreground mt-1">
+                E: {(data?.predictions.accuracy_breakdown_pct?.electricity ?? 0).toFixed(1)}% · A:{" "}
+                {(data?.predictions.accuracy_breakdown_pct?.water ?? 0).toFixed(1)}%
+              </p>
             </CardContent>
           </Card>
           <Card>
@@ -67,6 +71,9 @@ export default function Predicciones() {
               <TrendingUp className="h-8 w-8 mx-auto mb-2 text-green-500" />
               <p className="text-xs text-muted-foreground">Ahorro Proyectado</p>
               <p className="text-2xl font-bold">${(data?.predictions.projected_savings_usd ?? 0).toLocaleString("es-CL")}</p>
+              <p className="text-[11px] text-muted-foreground mt-1">
+                Mejora media futura: {(data?.predictions.annual_savings_summary?.avg_future_savings_pct ?? 0).toFixed(1)}%
+              </p>
             </CardContent>
           </Card>
           <Card>
@@ -77,6 +84,22 @@ export default function Predicciones() {
             </CardContent>
           </Card>
         </div>
+
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">Modelos Campeones</CardTitle>
+          </CardHeader>
+          <CardContent className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div className="rounded-lg border p-3">
+              <p className="text-xs text-muted-foreground">Electricidad</p>
+              <p className="font-semibold">{data?.predictions.champion_models?.electricity ?? "N/D"}</p>
+            </div>
+            <div className="rounded-lg border p-3">
+              <p className="text-xs text-muted-foreground">Agua</p>
+              <p className="font-semibold">{data?.predictions.champion_models?.water ?? "N/D"}</p>
+            </div>
+          </CardContent>
+        </Card>
 
         <ConsumptionChart
           data={chartData}

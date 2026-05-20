@@ -4,7 +4,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 import pandas as pd
-from sqlalchemy import select
+from sqlalchemy import select, tuple_
+from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.orm import Session
 
 from app.db.models import (
@@ -31,6 +32,28 @@ REQUIRED_COLUMNS = {
     "electricity_cost_usd",
     "water_cost_usd",
     "co2_avoided_ton",
+}
+
+YEAR_MIN = 2000
+YEAR_MAX = 2100
+
+UTILITY_REQUIRED_COLUMNS = {
+    "electricity": {
+        "company_name",
+        "facility_name",
+        "year",
+        "month",
+        "electricity_kwh",
+        "electricity_cost_usd",
+    },
+    "water": {
+        "company_name",
+        "facility_name",
+        "year",
+        "month",
+        "water_m3",
+        "water_cost_usd",
+    },
 }
 
 DISTRIBUTION_COLUMNS = [
@@ -90,6 +113,10 @@ def _clean_dataframe(df: pd.DataFrame) -> tuple[pd.DataFrame, int]:
     if missing:
         raise ValueError(f"CSV inválido. Faltan columnas: {', '.join(sorted(missing))}")
 
+    for col in ("company_name", "facility_name", "region"):
+        if col in df.columns:
+            df[col] = df[col].astype("string").str.strip()
+
     initial_rows = len(df)
 
     df = df.dropna(subset=["company_name", "facility_name", "year", "month", "electricity_kwh", "water_m3"])
@@ -117,6 +144,12 @@ def _clean_dataframe(df: pd.DataFrame) -> tuple[pd.DataFrame, int]:
 
     df = df.dropna(subset=["year", "month", "electricity_kwh", "water_m3", "electricity_cost_usd", "water_cost_usd", "co2_avoided_ton"])
     df = df[(df["month"] >= 1) & (df["month"] <= 12)]
+    df = df[(df["year"] >= YEAR_MIN) & (df["year"] <= YEAR_MAX)]
+
+    if df.empty:
+        raise ValueError(
+            f"CSV sin filas válidas: el campo year debe estar entre {YEAR_MIN} y {YEAR_MAX}."
+        )
 
     agg_map: dict[str, str] = {
         "electricity_kwh": "sum",
@@ -137,6 +170,105 @@ def _clean_dataframe(df: pd.DataFrame) -> tuple[pd.DataFrame, int]:
             agg_map[cost_col] = "sum"
 
     grouped = df.groupby(["company_name", "facility_name", "region", "year", "month"], as_index=False).agg(agg_map).reset_index(drop=True)
+
+    rejected = initial_rows - len(grouped)
+    return grouped, max(rejected, 0)
+
+
+def _clean_utility_dataframe(df: pd.DataFrame, utility: str) -> tuple[pd.DataFrame, int]:
+    utility_key = utility.strip().lower()
+    if utility_key not in UTILITY_REQUIRED_COLUMNS:
+        raise ValueError("Utilidad no soportada para ETL parcial.")
+
+    df.columns = [c.strip().lower() for c in df.columns]
+
+    missing = UTILITY_REQUIRED_COLUMNS[utility_key] - set(df.columns)
+    if missing:
+        raise ValueError(
+            f"CSV inválido para {utility_key}. Faltan columnas: {', '.join(sorted(missing))}"
+        )
+
+    # Región es opcional en carga por módulo.
+    if "region" not in df.columns:
+        df["region"] = ""
+
+    for col in ("company_name", "facility_name", "region"):
+        if col in df.columns:
+            df[col] = df[col].astype("string").str.strip()
+
+    initial_rows = len(df)
+    drop_subset = [
+        "company_name",
+        "facility_name",
+        "year",
+        "month",
+    ]
+    if utility_key == "electricity":
+        drop_subset.extend(["electricity_kwh", "electricity_cost_usd"])
+    else:
+        drop_subset.extend(["water_m3", "water_cost_usd"])
+
+    df = df.dropna(subset=drop_subset)
+
+    numeric_cols = [
+        "year",
+        "month",
+        "electricity_kwh",
+        "water_m3",
+        "electricity_cost_usd",
+        "water_cost_usd",
+        "co2_avoided_ton",
+        "lighting_pct",
+        "hvac_pct",
+        "machinery_pct",
+        "offices_pct",
+        "others_pct",
+    ]
+    for value_col, cost_col in RESOURCE_COLUMN_MAPPING.values():
+        numeric_cols.append(value_col)
+        numeric_cols.append(cost_col)
+
+    for col in numeric_cols:
+        if col in df.columns:
+            df[col] = pd.to_numeric(df[col], errors="coerce")
+
+    if utility_key == "electricity":
+        df = df.dropna(subset=["year", "month", "electricity_kwh", "electricity_cost_usd"])
+    else:
+        df = df.dropna(subset=["year", "month", "water_m3", "water_cost_usd"])
+
+    df = df[(df["month"] >= 1) & (df["month"] <= 12)]
+    df = df[(df["year"] >= YEAR_MIN) & (df["year"] <= YEAR_MAX)]
+
+    if df.empty:
+        raise ValueError(
+            f"CSV sin filas válidas para {utility_key}: year debe estar entre {YEAR_MIN} y {YEAR_MAX}."
+        )
+
+    agg_map: dict[str, str] = {}
+    if "co2_avoided_ton" in df.columns:
+        agg_map["co2_avoided_ton"] = "sum"
+    for area_col in ["lighting_pct", "hvac_pct", "machinery_pct", "offices_pct", "others_pct"]:
+        if area_col in df.columns:
+            agg_map[area_col] = "mean"
+    if utility_key == "electricity":
+        agg_map["electricity_kwh"] = "sum"
+        agg_map["electricity_cost_usd"] = "sum"
+    else:
+        agg_map["water_m3"] = "sum"
+        agg_map["water_cost_usd"] = "sum"
+
+    for value_col, cost_col in RESOURCE_COLUMN_MAPPING.values():
+        if value_col in df.columns:
+            agg_map[value_col] = "sum"
+        if cost_col in df.columns:
+            agg_map[cost_col] = "sum"
+
+    grouped = (
+        df.groupby(["company_name", "facility_name", "region", "year", "month"], as_index=False)
+        .agg(agg_map)
+        .reset_index(drop=True)
+    )
 
     rejected = initial_rows - len(grouped)
     return grouped, max(rejected, 0)
@@ -170,6 +302,180 @@ def _get_or_create_facility(db: Session, company_id: int, facility_name: str, re
     return facility
 
 
+def _chunked(sequence: list, size: int):
+    for idx in range(0, len(sequence), size):
+        yield sequence[idx : idx + size]
+
+
+def _ensure_companies_bulk(db: Session, company_names: list[str]) -> dict[str, int]:
+    normalized = sorted({name.strip() for name in company_names if isinstance(name, str) and name.strip()})
+    if not normalized:
+        return {}
+
+    existing = db.execute(select(Company.id, Company.name).where(Company.name.in_(normalized))).all()
+    company_map = {str(row.name): int(row.id) for row in existing}
+    missing = [name for name in normalized if name not in company_map]
+
+    for chunk in _chunked(missing, 1000):
+        insert_stmt = pg_insert(Company).values([{"name": name} for name in chunk])
+        db.execute(insert_stmt.on_conflict_do_nothing(index_elements=[Company.name]))
+
+    if missing:
+        db.flush()
+        existing = db.execute(select(Company.id, Company.name).where(Company.name.in_(normalized))).all()
+        company_map = {str(row.name): int(row.id) for row in existing}
+
+    return company_map
+
+
+def _ensure_facilities_bulk(
+    db: Session,
+    *,
+    rows: list[dict[str, object]],
+) -> dict[tuple[int, str], int]:
+    normalized: dict[tuple[int, str], str | None] = {}
+    for row in rows:
+        company_id = int(row["company_id"])
+        facility_name = str(row["facility_name"]).strip()
+        if not facility_name:
+            continue
+        raw_region = row.get("region")
+        region = str(raw_region).strip() if isinstance(raw_region, str) else ""
+        normalized[(company_id, facility_name)] = region or None
+
+    if not normalized:
+        return {}
+
+    payload = [
+        {
+            "company_id": company_id,
+            "name": facility_name,
+            "region": region,
+        }
+        for (company_id, facility_name), region in normalized.items()
+    ]
+
+    for chunk in _chunked(payload, 2000):
+        insert_stmt = pg_insert(Facility).values(chunk)
+        db.execute(
+            insert_stmt.on_conflict_do_update(
+                constraint="uq_facility_company_name",
+                set_={"region": insert_stmt.excluded.region},
+            )
+        )
+
+    db.flush()
+
+    keys = list(normalized.keys())
+    fetched = []
+    for chunk in _chunked(keys, 2000):
+        fetched.extend(
+            db.execute(
+                select(Facility.id, Facility.company_id, Facility.name).where(
+                    tuple_(Facility.company_id, Facility.name).in_(chunk)
+                )
+            ).all()
+        )
+
+    return {
+        (int(row.company_id), str(row.name)): int(row.id)
+        for row in fetched
+    }
+
+
+def _bulk_upsert_monthly_consumption_utility(
+    db: Session,
+    *,
+    cleaned: pd.DataFrame,
+    utility: str,
+) -> int:
+    utility_key = utility.strip().lower()
+    if cleaned.empty:
+        return 0
+
+    frame = cleaned.copy()
+    frame["company_name"] = frame["company_name"].astype("string").str.strip()
+    frame["facility_name"] = frame["facility_name"].astype("string").str.strip()
+    frame["region"] = frame["region"].fillna("").astype("string").str.strip()
+
+    company_map = _ensure_companies_bulk(db, frame["company_name"].dropna().tolist())
+    if not company_map:
+        return 0
+
+    frame["company_id"] = frame["company_name"].map(company_map)
+    frame = frame.dropna(subset=["company_id"])
+    frame["company_id"] = frame["company_id"].astype(int)
+
+    facility_rows = frame[["company_id", "facility_name", "region"]].to_dict("records")
+    facility_map = _ensure_facilities_bulk(db, rows=facility_rows)
+    if not facility_map:
+        return 0
+
+    frame["facility_id"] = frame.apply(
+        lambda row: facility_map.get((int(row["company_id"]), str(row["facility_name"]))),
+        axis=1,
+    )
+    frame = frame.dropna(subset=["facility_id"])
+    frame["facility_id"] = frame["facility_id"].astype(int)
+
+    payload: list[dict[str, float | int]] = []
+    for row in frame.itertuples(index=False):
+        year = int(row.year)
+        month = int(row.month)
+        if utility_key == "electricity":
+            electricity_kwh = float(row.electricity_kwh)
+            electricity_cost_usd = float(row.electricity_cost_usd)
+            water_m3 = max(80.0, electricity_kwh * 0.36)
+            water_cost_usd = max(30.0, water_m3 * 1.25)
+            co2_raw = getattr(row, "co2_avoided_ton", None)
+            co2_avoided_ton = float(co2_raw) if co2_raw is not None and not pd.isna(co2_raw) else max(0.05, electricity_kwh * 0.00022)
+        else:
+            water_m3 = float(row.water_m3)
+            water_cost_usd = float(row.water_cost_usd)
+            electricity_kwh = max(250.0, water_m3 * 2.7)
+            electricity_cost_usd = max(60.0, electricity_kwh * 0.11)
+            co2_raw = getattr(row, "co2_avoided_ton", None)
+            co2_avoided_ton = float(co2_raw) if co2_raw is not None and not pd.isna(co2_raw) else max(0.05, electricity_kwh * 0.0002)
+
+        payload.append(
+            {
+                "facility_id": int(row.facility_id),
+                "year": year,
+                "month": month,
+                "electricity_kwh": electricity_kwh,
+                "water_m3": water_m3,
+                "electricity_cost_usd": electricity_cost_usd,
+                "water_cost_usd": water_cost_usd,
+                "co2_avoided_ton": co2_avoided_ton,
+            }
+        )
+
+    for chunk in _chunked(payload, 5000):
+        insert_stmt = pg_insert(MonthlyConsumption).values(chunk)
+        if utility_key == "electricity":
+            upsert_stmt = insert_stmt.on_conflict_do_update(
+                constraint="uq_monthly_consumption",
+                set_={
+                    "electricity_kwh": insert_stmt.excluded.electricity_kwh,
+                    "electricity_cost_usd": insert_stmt.excluded.electricity_cost_usd,
+                    "co2_avoided_ton": insert_stmt.excluded.co2_avoided_ton,
+                },
+            )
+        else:
+            upsert_stmt = insert_stmt.on_conflict_do_update(
+                constraint="uq_monthly_consumption",
+                set_={
+                    "water_m3": insert_stmt.excluded.water_m3,
+                    "water_cost_usd": insert_stmt.excluded.water_cost_usd,
+                    "co2_avoided_ton": insert_stmt.excluded.co2_avoided_ton,
+                },
+            )
+        db.execute(upsert_stmt)
+
+    db.flush()
+    return len(payload)
+
+
 def _upsert_monthly_consumption(db: Session, facility_id: int, row: pd.Series) -> MonthlyConsumption:
     record = db.scalar(
         select(MonthlyConsumption).where(
@@ -198,6 +504,91 @@ def _upsert_monthly_consumption(db: Session, facility_id: int, row: pd.Series) -
     record.electricity_cost_usd = float(row["electricity_cost_usd"])
     record.water_cost_usd = float(row["water_cost_usd"])
     record.co2_avoided_ton = float(row["co2_avoided_ton"])
+    db.flush()
+    return record
+
+
+def _default_counterpart_values(utility: str, row: pd.Series) -> tuple[float, float]:
+    utility_key = utility.strip().lower()
+    if utility_key == "electricity":
+        electricity_kwh = float(row.get("electricity_kwh", 0) or 0)
+        water_m3 = max(80.0, electricity_kwh * 0.36)
+        water_cost_usd = max(30.0, water_m3 * 1.25)
+        return water_m3, water_cost_usd
+
+    water_m3 = float(row.get("water_m3", 0) or 0)
+    electricity_kwh = max(250.0, water_m3 * 2.7)
+    electricity_cost_usd = max(60.0, electricity_kwh * 0.11)
+    return electricity_kwh, electricity_cost_usd
+
+
+def _upsert_monthly_consumption_utility(
+    db: Session,
+    *,
+    facility_id: int,
+    row: pd.Series,
+    utility: str,
+) -> MonthlyConsumption:
+    utility_key = utility.strip().lower()
+    record = db.scalar(
+        select(MonthlyConsumption).where(
+            MonthlyConsumption.facility_id == facility_id,
+            MonthlyConsumption.year == int(row["year"]),
+            MonthlyConsumption.month == int(row["month"]),
+        )
+    )
+
+    co2_value = row.get("co2_avoided_ton")
+    co2_is_valid = co2_value is not None and not pd.isna(co2_value)
+
+    if utility_key == "electricity":
+        electricity_kwh = float(row["electricity_kwh"])
+        electricity_cost_usd = float(row["electricity_cost_usd"])
+        default_water_m3, default_water_cost_usd = _default_counterpart_values("electricity", row)
+        if not record:
+            record = MonthlyConsumption(
+                facility_id=facility_id,
+                year=int(row["year"]),
+                month=int(row["month"]),
+                electricity_kwh=electricity_kwh,
+                water_m3=default_water_m3,
+                electricity_cost_usd=electricity_cost_usd,
+                water_cost_usd=default_water_cost_usd,
+                co2_avoided_ton=float(co2_value) if co2_is_valid else max(0.05, electricity_kwh * 0.00022),
+            )
+            db.add(record)
+            db.flush()
+            return record
+
+        record.electricity_kwh = electricity_kwh
+        record.electricity_cost_usd = electricity_cost_usd
+        if co2_is_valid:
+            record.co2_avoided_ton = float(co2_value)
+        db.flush()
+        return record
+
+    water_m3 = float(row["water_m3"])
+    water_cost_usd = float(row["water_cost_usd"])
+    default_electricity_kwh, default_electricity_cost_usd = _default_counterpart_values("water", row)
+    if not record:
+        record = MonthlyConsumption(
+            facility_id=facility_id,
+            year=int(row["year"]),
+            month=int(row["month"]),
+            electricity_kwh=default_electricity_kwh,
+            water_m3=water_m3,
+            electricity_cost_usd=default_electricity_cost_usd,
+            water_cost_usd=water_cost_usd,
+            co2_avoided_ton=float(co2_value) if co2_is_valid else max(0.05, default_electricity_kwh * 0.0002),
+        )
+        db.add(record)
+        db.flush()
+        return record
+
+    record.water_m3 = water_m3
+    record.water_cost_usd = water_cost_usd
+    if co2_is_valid:
+        record.co2_avoided_ton = float(co2_value)
     db.flush()
     return record
 
@@ -347,6 +738,62 @@ def run_etl_from_csv(db: Session, csv_path: str, source_filename: str | None = N
         activity_type="etl",
         message=f"ETL ejecutado sobre {source_name}",
         metadata={"rows_processed": processed, "rows_rejected": rejected},
+    )
+
+    db.flush()
+    return job
+
+
+def run_etl_from_utility_csv(
+    db: Session,
+    *,
+    csv_path: str,
+    utility: str,
+    source_filename: str | None = None,
+) -> ETLJob:
+    utility_key = utility.strip().lower()
+    if utility_key not in {"electricity", "water"}:
+        raise ValueError("Utilidad no soportada. Debe ser 'electricity' o 'water'.")
+
+    started_at = datetime.now(timezone.utc)
+    path = Path(csv_path)
+    if not path.exists():
+        raise FileNotFoundError(f"No se encontró archivo CSV: {csv_path}")
+
+    source_name = source_filename or path.name
+    df = pd.read_csv(path)
+    cleaned, rejected = _clean_utility_dataframe(df, utility_key)
+    # Catálogo de recursos se mantiene inicializado, pero en ETL parcial evitamos
+    # cargar consumos de recursos para priorizar velocidad y actualización de vistas
+    # eléctricas/hídricas.
+    ensure_resource_catalog(db)
+    processed = _bulk_upsert_monthly_consumption_utility(
+        db,
+        cleaned=cleaned,
+        utility=utility_key,
+    )
+
+    finished_at = datetime.now(timezone.utc)
+    job = ETLJob(
+        source_filename=source_name,
+        rows_processed=processed,
+        rows_rejected=rejected,
+        status="completed",
+        notes=f"Proceso ETL {utility_key} ejecutado correctamente (modo rápido por módulo)",
+        started_at=started_at,
+        finished_at=finished_at,
+    )
+    db.add(job)
+
+    log_activity(
+        db,
+        activity_type="etl",
+        message=f"ETL {utility_key} ejecutado sobre {source_name}",
+        metadata={
+            "utility": utility_key,
+            "rows_processed": processed,
+            "rows_rejected": rejected,
+        },
     )
 
     db.flush()

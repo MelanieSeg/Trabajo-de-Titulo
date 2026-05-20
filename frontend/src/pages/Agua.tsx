@@ -1,11 +1,16 @@
-import { Droplets, TrendingDown, DollarSign } from "lucide-react";
+import { Droplets, TrendingDown, DollarSign, Upload, Loader2 } from "lucide-react";
 import { DashboardLayout } from "@/components/DashboardLayout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { ChartContainer, ChartTooltip, ChartTooltipContent } from "@/components/ui/chart";
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, BarChart, Bar } from "recharts";
-import { useState } from "react";
+import { useRef, useState } from "react";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { DateRangeFilter } from "@/components/DateRangeFilter";
 import { useOperationsOverview } from "@/hooks/useOperationsOverview";
+import { Button } from "@/components/ui/button";
+import { uploadWaterCsv, runMlTraining } from "@/lib/api";
+import { toast } from "sonner";
+import { useQueryClient } from "@tanstack/react-query";
 
 const chartConfig = {
   consumo: {
@@ -16,6 +21,14 @@ const chartConfig = {
     label: "Predicción (m³)",
     color: "hsl(160 60% 42%)",
   },
+  sinSoftware: {
+    label: "Sin software (USD)",
+    color: "hsl(11 80% 56%)",
+  },
+  optimizado: {
+    label: "Con software / optimizado (USD)",
+    color: "hsl(190 75% 44%)",
+  },
 };
 
 const axisStroke = "hsl(var(--muted-foreground))";
@@ -24,6 +37,9 @@ const tickStyle = { fill: "hsl(var(--foreground))", fontSize: 12 };
 
 export default function Agua() {
   const [months, setMonths] = useState(12);
+  const [uploading, setUploading] = useState(false);
+  const inputRef = useRef<HTMLInputElement | null>(null);
+  const queryClient = useQueryClient();
   const { data, isLoading, isError } = useOperationsOverview(months);
 
   const cards = data?.water.cards ?? [];
@@ -34,6 +50,43 @@ export default function Agua() {
     consumo: item.energy_values?.water ?? item.water_m3,
     prediccion: item.energy_predictions?.water ?? item.predicted_water_m3,
   }));
+  const annualComparisonData = (data?.comparisons?.rows ?? []).map((item) => ({
+    periodo: item.periodo,
+    sinSoftware: item.water_cost_without_software_usd,
+    optimizado: item.water_cost_with_software_usd,
+  }));
+  const comparisonRows = data?.comparisons?.rows ?? [];
+  const comparisonSummary = data?.comparisons?.summary;
+
+  const onFileSelected = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    try {
+      setUploading(true);
+      const etlResult = await uploadWaterCsv(file);
+      await queryClient.invalidateQueries({ queryKey: ["operations-overview"] });
+      await queryClient.invalidateQueries({ queryKey: ["dashboard-data"] });
+
+      let accuracyText = "";
+      try {
+        const mlResult = await runMlTraining(3);
+        accuracyText = ` · precisión ${Number(mlResult.accuracy_pct.water ?? 0).toFixed(1)}%`;
+      } catch (mlError) {
+        toast.error(mlError instanceof Error ? mlError.message : "No se pudo reentrenar ML después de la carga");
+      } finally {
+        await queryClient.invalidateQueries({ queryKey: ["operations-overview"] });
+        await queryClient.invalidateQueries({ queryKey: ["dashboard-data"] });
+      }
+
+      toast.success(`Carga hídrica lista: ${etlResult.rows_processed} filas${accuracyText}`);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "No se pudo cargar CSV de agua");
+    } finally {
+      setUploading(false);
+      event.target.value = "";
+    }
+  };
 
   return (
     <DashboardLayout>
@@ -42,6 +95,22 @@ export default function Agua() {
           <h2 className="text-xl font-bold text-foreground">Consumo de Agua</h2>
           <p className="text-sm text-muted-foreground">Análisis detallado del consumo hídrico</p>
         </div>
+
+        <Card>
+          <CardContent className="p-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+            <div>
+              <p className="text-sm font-medium">Cargar CSV de Agua</p>
+              <p className="text-xs text-muted-foreground">
+                Desde esta vista se procesa solo el módulo de agua y luego se reentrena ML.
+              </p>
+            </div>
+            <input ref={inputRef} type="file" accept=".csv" className="hidden" onChange={onFileSelected} />
+            <Button onClick={() => inputRef.current?.click()} disabled={uploading}>
+              {uploading ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Upload className="h-4 w-4 mr-2" />}
+              {uploading ? "Procesando..." : "Subir CSV Agua"}
+            </Button>
+          </CardContent>
+        </Card>
 
         <DateRangeFilter selectedMonths={months} onMonthsChange={setMonths} />
 
@@ -121,6 +190,115 @@ export default function Agua() {
                   <Bar dataKey="consumo" fill="var(--color-consumo)" radius={[4, 4, 0, 0]} />
                 </BarChart>
               </ChartContainer>
+            </CardContent>
+          </Card>
+        </div>
+
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">Comparativa Anual de Costos de Agua</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <ChartContainer config={chartConfig} className="h-[280px] w-full">
+              <BarChart data={annualComparisonData}>
+                <CartesianGrid strokeDasharray="3 3" stroke={gridStroke} />
+                <XAxis dataKey="periodo" stroke={axisStroke} tick={tickStyle} tickLine={{ stroke: axisStroke }} />
+                <YAxis stroke={axisStroke} tick={tickStyle} tickLine={{ stroke: axisStroke }} />
+                <ChartTooltip content={<ChartTooltipContent />} />
+                <Bar dataKey="sinSoftware" fill="var(--color-sinSoftware)" radius={[4, 4, 0, 0]} />
+                <Bar dataKey="optimizado" fill="var(--color-optimizado)" radius={[4, 4, 0, 0]} />
+              </BarChart>
+            </ChartContainer>
+          </CardContent>
+        </Card>
+
+        <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base">Tabla de Costos de Agua: Sin vs Con Software</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              <div className="text-xs text-muted-foreground">
+                Ahorro histórico:{" "}
+                <span className="font-semibold text-foreground">
+                  USD {Number(comparisonSummary?.historical_savings_usd ?? 0).toLocaleString("es-CL", { maximumFractionDigits: 2 })}
+                </span>
+              </div>
+              <div className="text-xs text-muted-foreground">
+                Ahorro futuro proyectado:{" "}
+                <span className="font-semibold text-foreground">
+                  USD {Number(comparisonSummary?.future_savings_usd ?? 0).toLocaleString("es-CL", { maximumFractionDigits: 2 })}
+                </span>
+              </div>
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Año</TableHead>
+                    <TableHead>Escenario</TableHead>
+                    <TableHead className="text-right">Sin software (USD)</TableHead>
+                    <TableHead className="text-right">Con software (USD)</TableHead>
+                    <TableHead className="text-right">Ahorro (USD)</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {comparisonRows.map((row) => (
+                    <TableRow key={`water-cost-${row.year}`}>
+                      <TableCell>{row.periodo}</TableCell>
+                      <TableCell>{row.scenario_type === "predictive" ? "Predictivo" : "Histórico"}</TableCell>
+                      <TableCell className="text-right">
+                        {Number(row.water_cost_without_software_usd).toLocaleString("es-CL", { maximumFractionDigits: 2 })}
+                      </TableCell>
+                      <TableCell className="text-right">
+                        {Number(row.water_cost_with_software_usd).toLocaleString("es-CL", { maximumFractionDigits: 2 })}
+                      </TableCell>
+                      <TableCell className="text-right text-green-600">
+                        {Number(
+                          row.water_cost_without_software_usd - row.water_cost_with_software_usd,
+                        ).toLocaleString("es-CL", { maximumFractionDigits: 2 })}
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base">Tabla de Consumo de Agua: Sin vs Con Software</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Año</TableHead>
+                    <TableHead>Escenario</TableHead>
+                    <TableHead className="text-right">Sin software (m³)</TableHead>
+                    <TableHead className="text-right">Con software (m³)</TableHead>
+                    <TableHead className="text-right">Mejora (%)</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {comparisonRows.map((row) => {
+                    const without = Number(row.water_m3_without_software ?? 0);
+                    const withSoftware = Number(row.water_m3_with_software ?? 0);
+                    const gainPct = without > 0 ? ((without - withSoftware) / without) * 100 : 0;
+                    return (
+                      <TableRow key={`water-cons-${row.year}`}>
+                        <TableCell>{row.periodo}</TableCell>
+                        <TableCell>{row.scenario_type === "predictive" ? "Predictivo" : "Histórico"}</TableCell>
+                        <TableCell className="text-right">
+                          {without.toLocaleString("es-CL", { maximumFractionDigits: 2 })}
+                        </TableCell>
+                        <TableCell className="text-right">
+                          {withSoftware.toLocaleString("es-CL", { maximumFractionDigits: 2 })}
+                        </TableCell>
+                        <TableCell className="text-right text-green-600">{gainPct.toFixed(2)}%</TableCell>
+                      </TableRow>
+                    );
+                  })}
+                </TableBody>
+              </Table>
             </CardContent>
           </Card>
         </div>

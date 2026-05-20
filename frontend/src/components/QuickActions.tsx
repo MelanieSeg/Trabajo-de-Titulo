@@ -318,7 +318,9 @@ export function QuickActions() {
     if (id === "ml") {
       void runAction("ml", async () => {
         const result = await runMlTraining(3);
-        toast.success(`ML entrenado (MAE E:${result.validation_mae.electricity}, A:${result.validation_mae.water})`);
+        toast.success(
+          `ML entrenado: E ${result.champion_models.electricity} (${result.accuracy_pct.electricity.toFixed(1)}%), A ${result.champion_models.water} (${result.accuracy_pct.water.toFixed(1)}%)`
+        );
       });
       return;
     }
