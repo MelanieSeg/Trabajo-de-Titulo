@@ -12,7 +12,8 @@ from starlette.responses import Response
 from app.api.routes import api_router
 from app.core.config import get_settings
 from app.core.rate_limit import limiter
-from app.db.session import SessionLocal
+from app.db.base import Base
+from app.db.session import SessionLocal, engine
 from app.services.bootstrap_service import bootstrap
 
 settings = get_settings()
@@ -79,6 +80,9 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
 
 @asynccontextmanager
 async def lifespan(_: FastAPI):
+    # Importar modelos para que SQLAlchemy los registre antes de create_all
+    import app.db.models  # noqa: F401
+    Base.metadata.create_all(bind=engine)
     db = SessionLocal()
     try:
         bootstrap(db)

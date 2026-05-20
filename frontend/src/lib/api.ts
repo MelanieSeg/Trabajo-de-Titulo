@@ -994,3 +994,24 @@ export function predictFuelConsumption(payload: FuelPredictionRequest): Promise<
     body: JSON.stringify(payload),
   });
 }
+
+export interface FuelPredictionLogItem {
+  id: number;
+  vehicle_cat: string;
+  fuel_type: string;
+  dist_km: number;
+  km_per_liter_usado: number;
+  km_per_liter_fue_imputado: boolean;
+  precio_litro_clp: number;
+  fuel_liters: number;
+  co2_kg: number;
+  costo_clp: number;
+  ahorro_litros: number;
+  ahorro_clp: number;
+  ahorro_co2_kg: number;
+  created_at: string;
+}
+
+export function getFuelHistorial(limit = 20): Promise<FuelPredictionLogItem[]> {
+  return request<FuelPredictionLogItem[]>(`/combustible-ml/historial?limit=${limit}`);
+}

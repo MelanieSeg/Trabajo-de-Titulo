@@ -1,7 +1,7 @@
-import { useState } from "react";
+import { useState, useEffect, useCallback } from "react";
 import {
   Brain, Fuel, Loader2, AlertTriangle, CheckCircle,
-  Info, TrendingDown, DollarSign, Leaf, TriangleAlert,
+  Info, TrendingDown, DollarSign, Leaf, TriangleAlert, History,
 } from "lucide-react";
 import { DashboardLayout } from "@/components/DashboardLayout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -11,7 +11,10 @@ import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { toast } from "sonner";
-import { predictFuelConsumption, type FuelPredictionRequest, type FuelPredictionResponse } from "@/lib/api";
+import {
+  predictFuelConsumption, getFuelHistorial,
+  type FuelPredictionRequest, type FuelPredictionResponse, type FuelPredictionLogItem,
+} from "@/lib/api";
 
 const VEHICLE_LABELS: Record<FuelPredictionRequest["vehicle_cat"], string> = {
   Van:   "Van / Furgoneta",
@@ -78,6 +81,13 @@ export default function PrediccionesCombustible() {
   const [loading,      setLoading]      = useState(false);
   const [result,       setResult]       = useState<FuelPredictionResponse | null>(null);
   const [litrosReales, setLitrosReales] = useState("");
+  const [historial,    setHistorial]    = useState<FuelPredictionLogItem[]>([]);
+
+  const cargarHistorial = useCallback(() => {
+    getFuelHistorial(10).then(setHistorial).catch(() => {});
+  }, []);
+
+  useEffect(() => { cargarHistorial(); }, [cargarHistorial]);
 
   const isFormValid =
     form.vehicle_cat !== "" &&
@@ -104,6 +114,7 @@ export default function PrediccionesCombustible() {
         precio_litro_clp: parseFloat(form.precio_litro_clp),
       });
       setResult(data);
+      cargarHistorial();
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Error al calcular la predicción");
     } finally {
@@ -459,6 +470,71 @@ export default function PrediccionesCombustible() {
                   </div>
                 </div>
               )}
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Historial de predicciones persistidas (OE6) */}
+        {historial.length > 0 && (
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2 text-base">
+                <History className="h-4 w-4 text-muted-foreground" />
+                Historial de predicciones recientes
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="p-0">
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b bg-muted/30 text-muted-foreground text-xs">
+                      <th className="p-3 text-left">Fecha</th>
+                      <th className="p-3 text-left">Vehículo</th>
+                      <th className="p-3 text-left">Combustible</th>
+                      <th className="p-3 text-right">Distancia (km)</th>
+                      <th className="p-3 text-right">Litros pred.</th>
+                      <th className="p-3 text-right">CO₂ (kg)</th>
+                      <th className="p-3 text-right">Costo CLP</th>
+                      <th className="p-3 text-right">Ahorro posible (L)</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {historial.map((item) => (
+                      <tr key={item.id} className="border-b last:border-0 hover:bg-muted/20 transition-colors">
+                        <td className="p-3 text-muted-foreground whitespace-nowrap">
+                          {new Date(item.created_at).toLocaleString("es-CL", {
+                            day: "2-digit", month: "2-digit", year: "2-digit",
+                            hour: "2-digit", minute: "2-digit",
+                          })}
+                        </td>
+                        <td className="p-3">{item.vehicle_cat}</td>
+                        <td className="p-3">
+                          <Badge variant="outline" className="text-xs">
+                            {item.fuel_type === "D" ? "Diésel" : "Gas Oil"}
+                          </Badge>
+                        </td>
+                        <td className="p-3 text-right font-medium">
+                          {item.dist_km.toLocaleString("es-CL")}
+                        </td>
+                        <td className="p-3 text-right font-medium">
+                          {item.fuel_liters.toLocaleString("es-CL", { maximumFractionDigits: 1 })} L
+                        </td>
+                        <td className="p-3 text-right">
+                          {item.co2_kg.toLocaleString("es-CL", { maximumFractionDigits: 1 })}
+                        </td>
+                        <td className="p-3 text-right">
+                          {clp(item.costo_clp)}
+                        </td>
+                        <td className="p-3 text-right text-green-600 font-medium">
+                          {item.ahorro_litros > 0
+                            ? `${item.ahorro_litros.toLocaleString("es-CL", { maximumFractionDigits: 1 })} L`
+                            : "—"}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             </CardContent>
           </Card>
         )}

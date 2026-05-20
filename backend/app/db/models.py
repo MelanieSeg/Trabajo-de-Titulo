@@ -454,6 +454,25 @@ class ResourceMonthlyConsumption(Base):
     )
 
 
+class FuelPredictionLog(Base):
+    __tablename__ = "fuel_prediction_logs"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    vehicle_cat: Mapped[str] = mapped_column(String(20), nullable=False)
+    fuel_type: Mapped[str] = mapped_column(String(5), nullable=False)
+    dist_km: Mapped[float] = mapped_column(Float, nullable=False)
+    km_per_liter_usado: Mapped[float] = mapped_column(Float, nullable=False)
+    km_per_liter_fue_imputado: Mapped[bool] = mapped_column(Boolean, nullable=False)
+    precio_litro_clp: Mapped[float] = mapped_column(Float, nullable=False)
+    fuel_liters: Mapped[float] = mapped_column(Float, nullable=False)
+    co2_kg: Mapped[float] = mapped_column(Float, nullable=False)
+    costo_clp: Mapped[float] = mapped_column(Float, nullable=False)
+    ahorro_litros: Mapped[float] = mapped_column(Float, nullable=False)
+    ahorro_clp: Mapped[float] = mapped_column(Float, nullable=False)
+    ahorro_co2_kg: Mapped[float] = mapped_column(Float, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+
 class ResourceAreaDistribution(Base):
     __tablename__ = "resource_area_distributions"
 

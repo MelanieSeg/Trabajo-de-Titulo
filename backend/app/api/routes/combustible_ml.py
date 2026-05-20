@@ -4,14 +4,19 @@ Modelo: Árbol de Decisión (CRISP-DM Sprint 3, hold-out 2018-19, err.rel 9.04%)
 Autora: Melanie Constanza Seguel Orellana
 """
 
+from datetime import datetime
 from pathlib import Path
 from typing import Literal, Optional
 
 import joblib
 import numpy as np
 import pandas as pd
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
+from sqlalchemy.orm import Session
+
+from app.api.deps import get_db
+from app.db.models import FuelPredictionLog
 
 router = APIRouter(prefix="/combustible-ml", tags=["combustible-ml"])
 
@@ -106,8 +111,30 @@ class FuelPredictionResponse(BaseModel):
     optimizacion: EscenarioOptimizacion
 
 
+class FuelPredictionLogResponse(BaseModel):
+    id: int
+    vehicle_cat: str
+    fuel_type: str
+    dist_km: float
+    km_per_liter_usado: float
+    km_per_liter_fue_imputado: bool
+    precio_litro_clp: float
+    fuel_liters: float
+    co2_kg: float
+    costo_clp: float
+    ahorro_litros: float
+    ahorro_clp: float
+    ahorro_co2_kg: float
+    created_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
 @router.post("/predict", response_model=FuelPredictionResponse)
-def predict_fuel(payload: FuelPredictionRequest) -> FuelPredictionResponse:
+def predict_fuel(
+    payload: FuelPredictionRequest,
+    db: Session = Depends(get_db),
+) -> FuelPredictionResponse:
     model = _get_model()
     co2_factor = _CO2_FACTOR[payload.fuel_type]
     fue_imputado = payload.km_per_liter is None
@@ -140,17 +167,38 @@ def predict_fuel(payload: FuelPredictionRequest) -> FuelPredictionResponse:
     co2_kg_opt = round(fuel_liters_opt * co2_factor, 2)
     costo_opt = round(fuel_liters_opt * payload.precio_litro_clp, 0)
 
+    ahorro_litros = round(fuel_liters - fuel_liters_opt, 2)
+    ahorro_clp = round(costo_clp - costo_opt, 0)
+    ahorro_co2_kg = round(co2_kg - co2_kg_opt, 2)
+
     optimizacion = EscenarioOptimizacion(
         km_per_liter_efectivo=km_pl_efectivo,
         km_per_liter_mejorado=km_pl_opt,
         fuel_liters_mejorado=fuel_liters_opt,
         costo_clp_mejorado=costo_opt,
         co2_kg_mejorado=co2_kg_opt,
-        ahorro_litros=round(fuel_liters - fuel_liters_opt, 2),
-        ahorro_clp=round(costo_clp - costo_opt, 0),
-        ahorro_co2_kg=round(co2_kg - co2_kg_opt, 2),
+        ahorro_litros=ahorro_litros,
+        ahorro_clp=ahorro_clp,
+        ahorro_co2_kg=ahorro_co2_kg,
         mejora_eficiencia_pct=_MEJORA_EFICIENCIA_PCT,
     )
+
+    # Persistir predicción para trazabilidad (OE6)
+    db.add(FuelPredictionLog(
+        vehicle_cat=payload.vehicle_cat,
+        fuel_type=payload.fuel_type,
+        dist_km=payload.dist_km,
+        km_per_liter_usado=km_pl_efectivo,
+        km_per_liter_fue_imputado=fue_imputado,
+        precio_litro_clp=payload.precio_litro_clp,
+        fuel_liters=round(fuel_liters, 2),
+        co2_kg=co2_kg,
+        costo_clp=costo_clp,
+        ahorro_litros=ahorro_litros,
+        ahorro_clp=ahorro_clp,
+        ahorro_co2_kg=ahorro_co2_kg,
+    ))
+    db.commit()
 
     return FuelPredictionResponse(
         fuel_liters=round(fuel_liters, 2),
@@ -168,3 +216,18 @@ def predict_fuel(payload: FuelPredictionRequest) -> FuelPredictionResponse:
         error_rel_pct=6.13,
         optimizacion=optimizacion,
     )
+
+
+@router.get("/historial", response_model=list[FuelPredictionLogResponse])
+def get_historial(
+    limit: int = 20,
+    db: Session = Depends(get_db),
+) -> list[FuelPredictionLogResponse]:
+    """Retorna las últimas predicciones guardadas, más recientes primero."""
+    registros = (
+        db.query(FuelPredictionLog)
+        .order_by(FuelPredictionLog.created_at.desc())
+        .limit(limit)
+        .all()
+    )
+    return registros
