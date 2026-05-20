@@ -35,6 +35,7 @@ const fiscalizedEnergyItems = [
 
 const analyticsItems = [
   { title: "Predicciones ML", url: "/predicciones", icon: Brain },
+  { title: "Predicción Combustible", url: "/predicciones-combustible", icon: Fuel },
   { title: "Análisis de Tendencias", url: "/tendencias", icon: TrendingUp },
   { title: "Detección Anomalías", url: "/anomalias", icon: AlertTriangle },
   { title: "Comparativas", url: "/comparativas", icon: PieChart },

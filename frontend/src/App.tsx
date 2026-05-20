@@ -39,6 +39,7 @@ const Seguridad = lazy(() => import("./pages/Seguridad.tsx"));
 const Ayuda = lazy(() => import("./pages/Ayuda.tsx"));
 const Fiscalizacion = lazy(() => import("./pages/Fiscalizacion.tsx"));
 const RecursoEnergetico = lazy(() => import("./pages/RecursoEnergetico.tsx"));
+const PrediccionesCombustible = lazy(() => import("./pages/PrediccionesCombustible.tsx"));
 
 const queryClient = new QueryClient();
 
@@ -280,6 +281,14 @@ const App = () => (
                   element={
                     <ProtectedRoute>
                       <RecursoEnergetico />
+                    </ProtectedRoute>
+                  }
+                />
+                <Route
+                  path="/predicciones-combustible"
+                  element={
+                    <ProtectedRoute>
+                      <PrediccionesCombustible />
                     </ProtectedRoute>
                   }
                 />

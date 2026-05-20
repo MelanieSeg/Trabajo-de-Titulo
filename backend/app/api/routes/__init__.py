@@ -2,6 +2,7 @@ from fastapi import APIRouter
 
 from app.api.routes.actions import router as actions_router
 from app.api.routes.auth import router as auth_router
+from app.api.routes.combustible_ml import router as combustible_ml_router
 from app.api.routes.dashboard import router as dashboard_router
 from app.api.routes.etl import router as etl_router
 from app.api.routes.fiscalization import router as fiscalization_router
@@ -18,6 +19,7 @@ api_router.include_router(dashboard_router)
 api_router.include_router(etl_router)
 api_router.include_router(fiscalization_router)
 api_router.include_router(ml_router)
+api_router.include_router(combustible_ml_router)
 api_router.include_router(actions_router)
 api_router.include_router(system_router)
 api_router.include_router(operations_router)

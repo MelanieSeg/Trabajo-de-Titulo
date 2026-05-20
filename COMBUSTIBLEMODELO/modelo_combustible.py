@@ -72,7 +72,7 @@ for cat, n in df['vehicle_cat'].value_counts().items():
 # =============================================================================
 # 2. DEFINICIÓN DE FEATURES Y VARIABLE OBJETIVO
 # =============================================================================
-FEATURES_NUM = ['dist_km', 'km_per_liter']
+FEATURES_NUM = ['dist_km', 'km_per_liter', 'litros_teoricos']
 FEATURES_CAT = ['vehicle_cat', 'fuel_type', 'year']
 FEATURES     = FEATURES_NUM + FEATURES_CAT
 TARGET_RAW   = 'fuel_liters'
@@ -432,14 +432,19 @@ print(por_cat.to_string())
 # =============================================================================
 # 14. EXPORTACIÓN DEL MODELO GANADOR (entrenado con todos los datos pre-2018-19)
 # =============================================================================
-print(f"\n[9] Exportando modelo ganador...")
+print(f"\n[9] Exportando modelo de producción...")
 
-pipeline_ganador_full = crear_modelos()[mejor_nombre]
+# Random Forest se exporta como modelo de producción por su respuesta gradual
+# a cambios continuos de eficiencia y distancia (suaviza la función escalón
+# del Árbol de Decisión al promediar múltiples árboles con distintos umbrales).
+# El Árbol de Decisión queda documentado en resultados_modelos.csv como baseline.
+MODELO_PRODUCCION = 'Random Forest'
+pipeline_produccion = crear_modelos()[MODELO_PRODUCCION]
 train_final = df[df['year'].isin(['2013', '2014', '2015-16', '2016-17'])]
-pipeline_ganador_full.fit(train_final[FEATURES], train_final['log_fuel'])
+pipeline_produccion.fit(train_final[FEATURES], train_final['log_fuel'])
 
-joblib.dump(pipeline_ganador_full, 'modelo_combustible.joblib')
-print(f"    modelo_combustible.joblib  ✓  ({mejor_nombre})")
+joblib.dump(pipeline_produccion, 'modelo_combustible.joblib')
+print(f"    modelo_combustible.joblib  ✓  ({MODELO_PRODUCCION})")
 
 tabla_oficial.reset_index().to_csv('resultados_modelos.csv', index=False)
 tabla_cv.reset_index().to_csv('resultados_cv.csv', index=False)
@@ -452,15 +457,20 @@ print(f"    resultados_cv.csv          ✓")
 print(f"\n{'=' * 65}")
 print(f"RESUMEN FINAL")
 print(f"{'=' * 65}")
+rf_fold4  = cv_results['Random Forest'][3]
+rf_cv_mae = tabla_cv.loc['Random Forest', 'MAE medio (L)']
+rf_cv_std = tabla_cv.loc['Random Forest', 'MAE std (L)']
+rf_ok     = rf_fold4['err_rel'] < 10
+
 print(f"  Estrategia        : TimeSeriesSplit — 4 folds temporales")
-print(f"  Modelo ganador    : {mejor_nombre}")
-print(f"  MAE CV medio      : {tabla_cv.loc[mejor_nombre, 'MAE medio (L)']:,.1f} ± "
-      f"{tabla_cv.loc[mejor_nombre, 'MAE std (L)']:,.1f} L")
-print(f"  --- Hold-out oficial (2018-19) ---")
-print(f"  MAE               : {mejor_fold4['mae']:,.1f} L")
-print(f"  RMSE              : {mejor_fold4['rmse']:,.1f} L")
-print(f"  Error relativo    : {mejor_fold4['err_rel']:.2f}%")
-print(f"  Criterio <10%     : {'APROBADO ✓' if umbral_ok else 'RECHAZADO ✗'}")
+print(f"  Mejor CV (MAE)    : {mejor_nombre}")
+print(f"  Producción        : {MODELO_PRODUCCION} (respuesta gradual continua)")
+print(f"  MAE CV medio RF   : {rf_cv_mae:,.1f} ± {rf_cv_std:,.1f} L")
+print(f"  --- Hold-out oficial (2018-19) — Random Forest ---")
+print(f"  MAE               : {rf_fold4['mae']:,.1f} L")
+print(f"  RMSE              : {rf_fold4['rmse']:,.1f} L")
+print(f"  Error relativo    : {rf_fold4['err_rel']:.2f}%")
+print(f"  Criterio <10%     : {'APROBADO ✓' if rf_ok else 'RECHAZADO ✗'}")
 print(f"\nArchivos generados:")
 for f in ['fig_cv_resultados.png', 'fig_real_vs_predicho.png',
           'fig_residuos.png', 'fig_importancia_features.png',

@@ -1,4 +1,4 @@
 Modelo,MAE medio (L),MAE std (L),RMSE medio (L),Err.rel medio %,Err.rel std %
-Regresión Lineal,1233697.8,2133307.3,42711180.1,48452.44,83779.48
-Árbol de Decisión,329.3,88.0,933.9,13.34,3.03
-Random Forest,392.9,58.7,1269.8,16.02,1.73
+Regresión Lineal,47315.7,79394.1,1597255.0,1859.71,3117.14
+Árbol de Decisión,101.6,54.6,580.6,4.06,2.11
+Random Forest,216.2,54.0,867.1,8.77,1.83

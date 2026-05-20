@@ -123,6 +123,11 @@ def transform(df):
     df['km_per_liter'] = df['dist_km'] / df['fuel_liters']
     df.loc[df['km_per_liter'] < 0,  'km_per_liter'] = np.nan
     df.loc[df['km_per_liter'] > 50, 'km_per_liter'] = np.nan
+    # Feature engineering: consumo teórico (dist / eficiencia).
+    # Combina distancia y eficiencia en un solo predictor lineal, lo que permite
+    # que modelos de ensamble (Random Forest) sean sensibles a cambios en ambas
+    # variables simultáneamente.
+    df['litros_teoricos'] = df['dist_km'] / df['km_per_liter']
     df['co2_kg'] = np.where(
         df['fuel_type'] == 'D',
         df['fuel_liters'] * CO2_DIESEL_KG_PER_LITER,

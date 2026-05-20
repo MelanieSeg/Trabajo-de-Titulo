@@ -948,3 +948,49 @@ export function exportAuditChain(format: "csv" | "json" = "csv"): Promise<Blob> 
 export function exportRawAuditableData(format: "json" | "zip" = "zip"): Promise<Blob> {
   return exportBlob(withQuery("/fiscalizacion/export/raw", { export_format: format }));
 }
+
+// --- Predicción de combustible (Melanie - Sprint 3) ---
+
+export interface FuelPredictionRequest {
+  vehicle_cat: "Van" | "Truck" | "Bus" | "Car";
+  fuel_type: "D" | "G";
+  dist_km: number;
+  km_per_liter?: number | null;
+  precio_litro_clp: number;
+}
+
+export interface EscenarioOptimizacion {
+  km_per_liter_efectivo: number;
+  km_per_liter_mejorado: number;
+  fuel_liters_mejorado: number;
+  costo_clp_mejorado: number;
+  co2_kg_mejorado: number;
+  ahorro_litros: number;
+  ahorro_clp: number;
+  ahorro_co2_kg: number;
+  mejora_eficiencia_pct: number;
+}
+
+export interface FuelPredictionResponse {
+  fuel_liters: number;
+  co2_kg: number;
+  co2_toneladas: number;
+  costo_clp: number;
+  costo_por_km_clp: number;
+  fuel_type_label: string;
+  vehicle_cat: string;
+  dist_km: number;
+  km_per_liter_usado: number;
+  km_per_liter_fue_imputado: boolean;
+  precio_litro_clp: number;
+  model_name: string;
+  error_rel_pct: number;
+  optimizacion: EscenarioOptimizacion;
+}
+
+export function predictFuelConsumption(payload: FuelPredictionRequest): Promise<FuelPredictionResponse> {
+  return request<FuelPredictionResponse>("/combustible-ml/predict", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
