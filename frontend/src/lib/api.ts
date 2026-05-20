@@ -743,6 +743,52 @@ export function fetchResourceOverview(resourceCode: string, months: number = 12)
   return request<ResourceOverview>(`/resources/${resourceCode}/overview?months=${months}`);
 }
 
+export type UtilityReportPeriodType = "monthly" | "annual" | "range";
+
+export async function downloadUtilityConsumptionReport(
+  utility: "electricity" | "water",
+  options: {
+    periodType: UtilityReportPeriodType;
+    year?: number;
+    month?: number;
+    startDate?: string;
+    endDate?: string;
+  }
+): Promise<{ blob: Blob; filename: string }> {
+  const token = getToken();
+  const headers = new Headers();
+  if (token) headers.set("Authorization", `Bearer ${token}`);
+
+  const response = await fetch(
+    `${API_BASE_URL}${withQuery("/operations/reports/utility.pdf", {
+      utility,
+      period_type: options.periodType,
+      year: options.year,
+      month: options.month,
+      start_date: options.startDate,
+      end_date: options.endDate,
+    })}`,
+    { headers }
+  );
+
+  if (!response.ok) {
+    let message = "No se pudo generar el reporte PDF.";
+    try {
+      const payload = await response.json();
+      message = payload?.detail ?? message;
+    } catch {
+      // Keep fallback message.
+    }
+    throw new Error(message);
+  }
+
+  const blob = await response.blob();
+  const disposition = response.headers.get("content-disposition") ?? "";
+  const matched = disposition.match(/filename=([^;]+)/i);
+  const filename = matched ? matched[1].replace(/"/g, "") : `reporte_${utility}.pdf`;
+  return { blob, filename };
+}
+
 async function exportBlob(path: string): Promise<Blob> {
   const token = getToken();
   const headers = new Headers();

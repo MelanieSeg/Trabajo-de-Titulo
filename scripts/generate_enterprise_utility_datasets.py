@@ -169,12 +169,16 @@ def main() -> None:
     water_path = output_dir / "agua_empresa_ficticia_2000_2026.csv"
     legacy_electricity_path = output_dir / "electricidad_empresa_ficticia_1998_2026.csv"
     legacy_water_path = output_dir / "agua_empresa_ficticia_1998_2026.csv"
+    electricity_recent_path = output_dir / "electricidad_empresa_ficticia_2020_2026.csv"
+    water_recent_path = output_dir / "agua_empresa_ficticia_2020_2026.csv"
 
     electricity_df.to_csv(electricity_path, index=False)
     water_df.to_csv(water_path, index=False)
     # Compatibilidad: mantener nombres históricos, pero con rango válido para la BD actual.
     electricity_df.to_csv(legacy_electricity_path, index=False)
     water_df.to_csv(legacy_water_path, index=False)
+    electricity_df[electricity_df["year"] >= 2020].to_csv(electricity_recent_path, index=False)
+    water_df[water_df["year"] >= 2020].to_csv(water_recent_path, index=False)
 
     readme_path = output_dir / "README.txt"
     readme_path.write_text(
@@ -184,11 +188,14 @@ def main() -> None:
         "2) agua_empresa_ficticia_2000_2026.csv\n"
         "3) electricidad_empresa_ficticia_1998_2026.csv (alias compatible)\n"
         "4) agua_empresa_ficticia_1998_2026.csv (alias compatible)\n\n"
+        "5) electricidad_empresa_ficticia_2020_2026.csv\n"
+        "6) agua_empresa_ficticia_2020_2026.csv\n\n"
         "Ambos son compatibles con /api/etl/upload y contienen:\n"
         "- 60 plantas\n"
         "- Registros mensuales desde 2000 hasta 2026\n"
         "- Columnas base + distribución por área + recursos adicionales\n"
         "- Patrón antes/después de software de gestión energética\n\n"
+        "Los archivos *_2020_2026.csv son recortes para pruebas rápidas de alertas recientes.\n\n"
         "Orden sugerido de carga:\n"
         "1. electricidad_empresa_ficticia_2000_2026.csv\n"
         "2. agua_empresa_ficticia_2000_2026.csv\n",

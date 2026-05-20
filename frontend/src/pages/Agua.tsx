@@ -1,14 +1,22 @@
-import { Droplets, TrendingDown, DollarSign, Upload, Loader2 } from "lucide-react";
+import { Droplets, TrendingDown, DollarSign, Upload, Loader2, Download } from "lucide-react";
 import { DashboardLayout } from "@/components/DashboardLayout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { ChartContainer, ChartTooltip, ChartTooltipContent } from "@/components/ui/chart";
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, BarChart, Bar } from "recharts";
 import { useRef, useState } from "react";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { DateRangeFilter } from "@/components/DateRangeFilter";
 import { useOperationsOverview } from "@/hooks/useOperationsOverview";
 import { Button } from "@/components/ui/button";
-import { uploadWaterCsv, runMlTraining } from "@/lib/api";
+import {
+  downloadUtilityConsumptionReport,
+  runMlTraining,
+  uploadWaterCsv,
+  UtilityReportPeriodType,
+} from "@/lib/api";
 import { toast } from "sonner";
 import { useQueryClient } from "@tanstack/react-query";
 
@@ -35,9 +43,25 @@ const axisStroke = "hsl(var(--muted-foreground))";
 const gridStroke = "hsl(var(--border))";
 const tickStyle = { fill: "hsl(var(--foreground))", fontSize: 12 };
 
+function triggerBlobDownload(blob: Blob, filename: string): void {
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = filename;
+  link.click();
+  URL.revokeObjectURL(url);
+}
+
 export default function Agua() {
+  const now = new Date();
   const [months, setMonths] = useState(12);
   const [uploading, setUploading] = useState(false);
+  const [downloadingReport, setDownloadingReport] = useState(false);
+  const [reportPeriodType, setReportPeriodType] = useState<UtilityReportPeriodType>("monthly");
+  const [reportYear, setReportYear] = useState<number>(now.getFullYear());
+  const [reportMonth, setReportMonth] = useState<number>(now.getMonth() + 1);
+  const [reportStartDate, setReportStartDate] = useState("");
+  const [reportEndDate, setReportEndDate] = useState("");
   const inputRef = useRef<HTMLInputElement | null>(null);
   const queryClient = useQueryClient();
   const { data, isLoading, isError } = useOperationsOverview(months);
@@ -85,6 +109,37 @@ export default function Agua() {
     } finally {
       setUploading(false);
       event.target.value = "";
+    }
+  };
+
+  const onDownloadReport = async () => {
+    try {
+      setDownloadingReport(true);
+      const options =
+        reportPeriodType === "range"
+          ? {
+              periodType: reportPeriodType,
+              startDate: reportStartDate || undefined,
+              endDate: reportEndDate || undefined,
+            }
+          : reportPeriodType === "annual"
+            ? {
+                periodType: reportPeriodType,
+                year: reportYear,
+              }
+            : {
+                periodType: reportPeriodType,
+                year: reportYear,
+                month: reportMonth,
+              };
+
+      const { blob, filename } = await downloadUtilityConsumptionReport("water", options);
+      triggerBlobDownload(blob, filename);
+      toast.success("Reporte PDF de agua generado");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "No se pudo generar el reporte PDF");
+    } finally {
+      setDownloadingReport(false);
     }
   };
 
@@ -209,6 +264,104 @@ export default function Agua() {
                 <Bar dataKey="optimizado" fill="var(--color-optimizado)" radius={[4, 4, 0, 0]} />
               </BarChart>
             </ChartContainer>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">Costos Sin Optimización (Solo Escenario Rojo)</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <ChartContainer config={chartConfig} className="h-[260px] w-full">
+              <BarChart data={annualComparisonData}>
+                <CartesianGrid strokeDasharray="3 3" stroke={gridStroke} />
+                <XAxis dataKey="periodo" stroke={axisStroke} tick={tickStyle} tickLine={{ stroke: axisStroke }} />
+                <YAxis stroke={axisStroke} tick={tickStyle} tickLine={{ stroke: axisStroke }} />
+                <ChartTooltip content={<ChartTooltipContent />} />
+                <Bar dataKey="sinSoftware" fill="var(--color-sinSoftware)" radius={[4, 4, 0, 0]} />
+              </BarChart>
+            </ChartContainer>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">Reporte PDF (Agua)</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
+              <div className="space-y-2">
+                <Label>Período</Label>
+                <Select value={reportPeriodType} onValueChange={(value) => setReportPeriodType(value as UtilityReportPeriodType)}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Selecciona" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="monthly">Mensual</SelectItem>
+                    <SelectItem value="annual">Anual</SelectItem>
+                    <SelectItem value="range">Rango de fechas</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {(reportPeriodType === "monthly" || reportPeriodType === "annual") && (
+                <div className="space-y-2">
+                  <Label>Año</Label>
+                  <Input
+                    type="number"
+                    min={2000}
+                    max={2100}
+                    value={reportYear}
+                    onChange={(event) => setReportYear(Number(event.target.value))}
+                  />
+                </div>
+              )}
+
+              {reportPeriodType === "monthly" && (
+                <div className="space-y-2">
+                  <Label>Mes</Label>
+                  <Input
+                    type="number"
+                    min={1}
+                    max={12}
+                    value={reportMonth}
+                    onChange={(event) => setReportMonth(Number(event.target.value))}
+                  />
+                </div>
+              )}
+
+              {reportPeriodType === "range" && (
+                <>
+                  <div className="space-y-2">
+                    <Label>Desde</Label>
+                    <Input
+                      type="date"
+                      value={reportStartDate}
+                      onChange={(event) => setReportStartDate(event.target.value)}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Hasta</Label>
+                    <Input
+                      type="date"
+                      value={reportEndDate}
+                      onChange={(event) => setReportEndDate(event.target.value)}
+                    />
+                  </div>
+                </>
+              )}
+            </div>
+
+            <div className="flex justify-end">
+              <Button onClick={onDownloadReport} disabled={downloadingReport}>
+                {downloadingReport ? (
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                ) : (
+                  <Download className="h-4 w-4 mr-2" />
+                )}
+                {downloadingReport ? "Generando..." : "Descargar PDF"}
+              </Button>
+            </div>
           </CardContent>
         </Card>
 
