@@ -92,6 +92,30 @@ export interface MLTrainResult {
     electricity: number;
     water: number;
   };
+  accuracy_pct: {
+    electricity: number;
+    water: number;
+  };
+  champion_models: {
+    electricity: string;
+    water: string;
+  };
+  model_benchmark: {
+    electricity: Array<{
+      model: string;
+      mae: number;
+      mape_pct: number;
+      r2: number;
+      accuracy_pct: number;
+    }>;
+    water: Array<{
+      model: string;
+      mae: number;
+      mape_pct: number;
+      r2: number;
+      accuracy_pct: number;
+    }>;
+  };
   predictions: Array<{
     utility: string;
     year: number;
@@ -304,6 +328,18 @@ export async function uploadConsumptionCsv(file: File): Promise<ETLUploadResult>
   return request<ETLUploadResult>("/etl/upload", { method: "POST", body: formData });
 }
 
+export async function uploadElectricityCsv(file: File): Promise<ETLUploadResult> {
+  const formData = new FormData();
+  formData.append("file", file);
+  return request<ETLUploadResult>("/etl/upload/electricity", { method: "POST", body: formData });
+}
+
+export async function uploadWaterCsv(file: File): Promise<ETLUploadResult> {
+  const formData = new FormData();
+  formData.append("file", file);
+  return request<ETLUploadResult>("/etl/upload/water", { method: "POST", body: formData });
+}
+
 export function generateMonthlyReport(): Promise<ReportResult> {
   return request<ReportResult>("/reports/monthly");
 }
@@ -414,6 +450,29 @@ export interface OperationsOverview {
     accuracy_pct: number;
     projected_savings_usd: number;
     anomaly_count: number;
+    accuracy_breakdown_pct: {
+      electricity: number;
+      water: number;
+    };
+    champion_models: {
+      electricity: string;
+      water: string;
+    };
+    benchmark: Record<
+      string,
+      Array<{
+        model: string;
+        mae: number;
+        mape_pct: number;
+        r2: number;
+        accuracy_pct: number;
+      }>
+    >;
+    annual_savings_summary: {
+      historical_savings_usd: number;
+      future_savings_usd: number;
+      avg_future_savings_pct: number;
+    };
     energy_catalog: Array<{ code: string; label: string; unit: string }>;
     series: Array<{
       mes: string;
@@ -454,7 +513,34 @@ export interface OperationsOverview {
       description: string;
     }>;
   };
-  comparisons: Array<{ periodo: string; electricidad: number; agua: number }>;
+  comparisons: {
+    software_start_year: number | null;
+    baseline_years: number[];
+    future_projection_years: number[];
+    summary: {
+      historical_savings_usd: number;
+      future_savings_usd: number;
+      avg_future_savings_pct: number;
+    };
+    rows: Array<{
+      year: number;
+      periodo: string;
+      scenario_type: "historical" | "predictive";
+      software_enabled: boolean;
+      electricity_kwh_without_software: number;
+      electricity_kwh_with_software: number;
+      water_m3_without_software: number;
+      water_m3_with_software: number;
+      electricity_cost_without_software_usd: number;
+      electricity_cost_with_software_usd: number;
+      water_cost_without_software_usd: number;
+      water_cost_with_software_usd: number;
+      total_cost_without_software_usd: number;
+      total_cost_with_software_usd: number;
+      projected_savings_usd: number;
+      projected_savings_pct: number;
+    }>;
+  };
   goals: Array<{
     id: number | string;
     name: string;

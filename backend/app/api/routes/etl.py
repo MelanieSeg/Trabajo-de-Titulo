@@ -8,28 +8,42 @@ from app.core.config import get_settings
 from app.db.models import ETLSchedule
 from app.schemas.api import ETLScheduleResponse, ETLScheduleUpdate, ETLUploadResponse
 from app.services.alert_service import regenerate_anomaly_alerts
-from app.services.etl_service import run_etl_from_csv
+from app.services.etl_service import run_etl_from_csv, run_etl_from_utility_csv
 from app.services.ml_service import train_and_predict
 
 router = APIRouter(prefix="/etl", tags=["etl"])
 
 
-@router.post("/upload", response_model=ETLUploadResponse)
-def upload_csv(
-    file: UploadFile = File(...),
-    db: Session = Depends(get_db_session),
-) -> ETLUploadResponse:
-    if not file.filename.lower().endswith(".csv"):
+def _validate_csv_filename(filename: str | None) -> str:
+    if not filename or not filename.lower().endswith(".csv"):
         raise HTTPException(status_code=400, detail="Solo se permiten archivos CSV.")
+    return filename
+
+
+def _upload_and_process_csv(
+    *,
+    db: Session,
+    file: UploadFile,
+    utility: str | None = None,
+) -> ETLUploadResponse:
+    filename = _validate_csv_filename(file.filename)
 
     settings = get_settings()
     upload_dir = Path(settings.etl_upload_dir)
     upload_dir.mkdir(parents=True, exist_ok=True)
 
-    file_path = upload_dir / file.filename
+    file_path = upload_dir / filename
     try:
         file_path.write_bytes(file.file.read())
-        job = run_etl_from_csv(db, str(file_path), source_filename=file.filename)
+        if utility:
+            job = run_etl_from_utility_csv(
+                db,
+                csv_path=str(file_path),
+                utility=utility,
+                source_filename=filename,
+            )
+        else:
+            job = run_etl_from_csv(db, str(file_path), source_filename=filename)
         regenerate_anomaly_alerts(db)
         try:
             train_and_predict(db, horizon_months=3)
@@ -46,6 +60,41 @@ def upload_csv(
         rows_rejected=job.rows_rejected,
         status=job.status,
         notes=job.notes or "",
+    )
+
+
+@router.post("/upload", response_model=ETLUploadResponse)
+def upload_csv(
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db_session),
+) -> ETLUploadResponse:
+    return _upload_and_process_csv(
+        db=db,
+        file=file,
+    )
+
+
+@router.post("/upload/electricity", response_model=ETLUploadResponse)
+def upload_electricity_csv(
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db_session),
+) -> ETLUploadResponse:
+    return _upload_and_process_csv(
+        db=db,
+        file=file,
+        utility="electricity",
+    )
+
+
+@router.post("/upload/water", response_model=ETLUploadResponse)
+def upload_water_csv(
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db_session),
+) -> ETLUploadResponse:
+    return _upload_and_process_csv(
+        db=db,
+        file=file,
+        utility="water",
     )
 
 

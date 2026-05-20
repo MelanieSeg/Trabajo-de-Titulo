@@ -22,6 +22,7 @@ class Settings(BaseSettings):
 
     etl_upload_dir: str = "/app/data/uploads"
     sample_csv_path: str = "/app/data/raw/sample_consumption.csv"
+    etl_max_upload_mb: int = 100
     platform_config_path: str = "../app/platform-config.json"
 
     default_company_name: str = "Green Glow Industries"

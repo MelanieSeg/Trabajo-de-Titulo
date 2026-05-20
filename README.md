@@ -16,7 +16,7 @@ En operaciones industriales y corporativas, el consumo energético suele estar d
 - **Backend**: FastAPI + SQLAlchemy + Pydantic.
 - **Base de datos**: PostgreSQL 16.
 - **ETL**: Pandas.
-- **Machine Learning**: Scikit-learn (RandomForestRegressor).
+- **Machine Learning**: Scikit-learn (pipeline multmodelo con selección automática por utilidad).
 - **Infraestructura**: Docker Compose.
 
 ## 3. Estructura del repositorio
@@ -66,7 +66,7 @@ Endpoints asociados:
 - Registro de jobs ETL para trazabilidad.
 
 ### 5.3 Predicción y anomalías
-- Entrenamiento de modelo ML con series temporales.
+- Entrenamiento ML robusto con benchmark multmodelo (RandomForest, GradientBoosting, KNN, BayesianRidge y LinearRegression).
 - Predicción de horizonte configurable.
 - Detección de aumentos y variaciones abruptas.
 - Generación de alertas por umbral.
@@ -144,6 +144,15 @@ docker compose up --build
 - `scripts/up.sh`
 - `scripts/down.sh`
 - `scripts/reset-db.sh`
+- `scripts/generate_enterprise_utility_datasets.py` (genera datasets gigantes de electricidad y agua)
+
+## 9.1 Datasets gigantes incluidos
+
+- Carpeta: `backend/data/raw/enterprise_big_datasets/`
+- Archivos:
+  - `electricidad_empresa_ficticia_1998_2026.csv`
+  - `agua_empresa_ficticia_1998_2026.csv`
+- Cada CSV contiene 20.880 filas (60 plantas x registros mensuales 1998-2026) y es compatible con `POST /api/etl/upload`.
 
 ## 10. Documentación detallada
 

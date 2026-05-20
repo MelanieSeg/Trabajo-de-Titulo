@@ -101,10 +101,21 @@ class MLPredictionItem(BaseModel):
     value: float
 
 
+class MLModelBenchmarkItem(BaseModel):
+    model: str
+    mae: float
+    mape_pct: float
+    r2: float
+    accuracy_pct: float
+
+
 class MLTrainResponse(BaseModel):
     model: str
     trained_records: int
     validation_mae: dict[str, float]
+    accuracy_pct: dict[str, float]
+    champion_models: dict[str, str]
+    model_benchmark: dict[str, list[MLModelBenchmarkItem]]
     predictions: list[MLPredictionItem]
 
 

@@ -24,14 +24,21 @@ def split_csv(value: str) -> list[str]:
 
 # Middleware para límite de carga
 class LimitUploadMiddleware(BaseHTTPMiddleware):
-    MAX_BODY_SIZE = 1 * 1024 * 1024  # 1 MB en bytes
+    MAX_BODY_SIZE = max(1, int(settings.etl_max_upload_mb)) * 1024 * 1024
 
     async def dispatch(self, request: Request, call_next) -> Response:
         if request.method in ["POST", "PUT", "PATCH"]:
             if "content-length" in request.headers:
-                content_length = int(request.headers["content-length"])
+                try:
+                    content_length = int(request.headers["content-length"])
+                except ValueError:
+                    return Response("Encabezado Content-Length inválido", status_code=400)
                 if content_length > self.MAX_BODY_SIZE:
-                    return Response("Payload demasiado grande", status_code=413)
+                    max_mb = self.MAX_BODY_SIZE // (1024 * 1024)
+                    return Response(
+                        f"Payload demasiado grande. Límite configurado: {max_mb} MB",
+                        status_code=413,
+                    )
         return await call_next(request)
 
 # Middleware para headers de seguridad (Helmet)
