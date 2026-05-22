@@ -102,6 +102,7 @@ export function ConsumptionChart({
   height = 320,
 }: ConsumptionChartProps) {
   const [activeRange, setActiveRange] = useState<(typeof ranges)[number]["key"]>("1A");
+  const [showSelector, setShowSelector] = useState(false);
 
   const visibleData = useMemo(() => {
     const selected = ranges.find((range) => range.key === activeRange);
@@ -115,6 +116,35 @@ export function ConsumptionChart({
     }
     return defaultCatalogFromData(data);
   }, [data, energyCatalog]);
+
+  // Activar selector solo cuando hay más de 3 series (gráfico multienergía)
+  const needsSelector = seriesCatalog.length > 3;
+  // Por defecto: mostrar solo electricity y water si hay muchas series
+  const defaultSelected = useMemo(() => {
+    if (!needsSelector) return new Set(seriesCatalog.map((s) => s.code));
+    const priority = ["electricity", "water", "diesel_l", "gasoil_l"];
+    const initial = seriesCatalog.filter((s) => priority.includes(s.code)).map((s) => s.code);
+    return new Set(initial.length > 0 ? initial : seriesCatalog.slice(0, 2).map((s) => s.code));
+  }, [seriesCatalog, needsSelector]);
+
+  const [selectedCodes, setSelectedCodes] = useState<Set<string>>(defaultSelected);
+
+  const activeSeries = useMemo(
+    () => needsSelector ? seriesCatalog.filter((s) => selectedCodes.has(s.code)) : seriesCatalog,
+    [seriesCatalog, selectedCodes, needsSelector]
+  );
+
+  function toggleCode(code: string) {
+    setSelectedCodes((prev) => {
+      const next = new Set(prev);
+      if (next.has(code)) {
+        if (next.size > 1) next.delete(code); // no dejar vacío
+      } else {
+        next.add(code);
+      }
+      return next;
+    });
+  }
 
   const paletteByCode = useMemo(() => {
     const map: Record<string, string> = {};
@@ -141,12 +171,21 @@ export function ConsumptionChart({
 
   return (
     <Card className="glass-card p-5">
-      <div className="mb-4 flex items-center justify-between">
+      <div className="mb-3 flex items-center justify-between gap-2 flex-wrap">
         <div>
           <h3 className="text-sm font-semibold text-foreground">{title}</h3>
           <p className="text-xs text-muted-foreground">{subtitle}</p>
         </div>
-        <div className="flex gap-1">
+        <div className="flex items-center gap-1 flex-wrap justify-end">
+          {needsSelector && (
+            <button
+              type="button"
+              className="rounded-md px-2.5 py-1 text-xs font-medium border border-border text-muted-foreground hover:bg-muted transition-colors mr-1"
+              onClick={() => setShowSelector((v) => !v)}
+            >
+              {showSelector ? "Ocultar filtro" : `Filtrar series (${activeSeries.length}/${seriesCatalog.length})`}
+            </button>
+          )}
           {ranges.map((range) => (
             <button
               key={range.key}
@@ -164,6 +203,33 @@ export function ConsumptionChart({
         </div>
       </div>
 
+      {/* Selector de series (solo cuando hay muchas) */}
+      {needsSelector && showSelector && (
+        <div className="mb-3 flex flex-wrap gap-1.5 p-3 rounded-lg bg-muted/30 border">
+          {seriesCatalog.map((item) => {
+            const color = paletteByCode[item.code];
+            const active = selectedCodes.has(item.code);
+            return (
+              <button
+                key={item.code}
+                type="button"
+                onClick={() => toggleCode(item.code)}
+                className={`flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium border transition-all ${
+                  active ? "opacity-100" : "opacity-40"
+                }`}
+                style={{ borderColor: color, color: active ? color : undefined }}
+              >
+                <span
+                  className="inline-block w-2 h-2 rounded-full"
+                  style={{ backgroundColor: color }}
+                />
+                {item.label}
+              </button>
+            );
+          })}
+        </div>
+      )}
+
       <ResponsiveContainer width="100%" height={height}>
         <LineChart data={chartData}>
           <CartesianGrid strokeDasharray="3 3" stroke="hsl(145 20% 90%)" />
@@ -178,14 +244,14 @@ export function ConsumptionChart({
           />
           <Legend wrapperStyle={{ fontSize: 11 }} />
 
-          {seriesCatalog.map((item) => {
+          {activeSeries.map((item) => {
             const color = paletteByCode[item.code];
             return (
               <Line
                 key={`real_${item.code}`}
                 type="monotone"
                 dataKey={`real_${item.code}`}
-                name={`${item.label} (${item.unit})`}
+                name={`${item.label}${item.unit ? ` (${item.unit})` : ""}`}
                 stroke={color}
                 strokeWidth={2}
                 dot={false}
@@ -194,7 +260,7 @@ export function ConsumptionChart({
             );
           })}
 
-          {seriesCatalog.map((item) => {
+          {activeSeries.map((item) => {
             const color = paletteByCode[item.code];
             return (
               <Line

@@ -1,9 +1,10 @@
-import { Brain, TrendingUp, AlertTriangle, CheckCircle, Loader2, Fuel, TriangleAlert, ArrowRight } from "lucide-react";
+import { Brain, TrendingUp, AlertTriangle, CheckCircle, Loader2, Fuel, TriangleAlert, ArrowRight, HelpCircle } from "lucide-react";
 import { DashboardLayout } from "@/components/DashboardLayout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { ConsumptionChart } from "@/components/ConsumptionChart";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { useOperationsOverview } from "@/hooks/useOperationsOverview";
 import { runMlTraining, getAnalisisFlota, getConsumoMensualFlota, type AnalisisFlotaResult } from "@/lib/api";
 import { useState } from "react";
@@ -164,7 +165,17 @@ export default function Predicciones() {
             <Card>
               <CardContent className="p-4 text-center">
                 <Fuel className="h-8 w-8 mx-auto mb-2 text-orange-500" />
-                <p className="text-xs text-muted-foreground">Precisión sobre datos reales de flota</p>
+                <p className="text-xs text-muted-foreground flex items-center justify-center gap-1">
+                  Precisión sobre datos reales de flota
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <HelpCircle className="h-3 w-3 cursor-help opacity-60" />
+                    </TooltipTrigger>
+                    <TooltipContent className="max-w-[220px] text-xs">
+                      Porcentaje promedio de exactitud del modelo al comparar la predicción con el consumo real registrado en cada viaje. 100% significa predicción perfecta.
+                    </TooltipContent>
+                  </Tooltip>
+                </p>
                 <p className="text-2xl font-bold">{flota.precision_promedio_pct.toFixed(1)}%</p>
                 <p className="text-[11px] text-muted-foreground mt-1">
                   {flota.total_registros_analizados} transacciones analizadas
@@ -174,7 +185,17 @@ export default function Predicciones() {
             <Card>
               <CardContent className="p-4 text-center">
                 <TrendingUp className="h-8 w-8 mx-auto mb-2 text-green-500" />
-                <p className="text-xs text-muted-foreground">Ahorro potencial de combustible</p>
+                <p className="text-xs text-muted-foreground flex items-center justify-center gap-1">
+                  Ahorro potencial de combustible
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <HelpCircle className="h-3 w-3 cursor-help opacity-60" />
+                    </TooltipTrigger>
+                    <TooltipContent className="max-w-[220px] text-xs">
+                      Litros consumidos en exceso por encima de lo que el modelo predice como eficiente. Representa lo que se podría ahorrar corrigiendo las ineficiencias detectadas.
+                    </TooltipContent>
+                  </Tooltip>
+                </p>
                 <p className="text-2xl font-bold">
                   {flota.ahorro_proyectado_litros.toLocaleString("es-CL", { maximumFractionDigits: 0 })} L
                 </p>
@@ -186,7 +207,17 @@ export default function Predicciones() {
             <Card>
               <CardContent className="p-4 text-center">
                 <TriangleAlert className={`h-8 w-8 mx-auto mb-2 ${anomaliasAltas > 0 ? "text-red-500" : "text-yellow-500"}`} />
-                <p className="text-xs text-muted-foreground">Vehículos con anomalía de consumo</p>
+                <p className="text-xs text-muted-foreground flex items-center justify-center gap-1">
+                  Viajes con consumo anómalo
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <HelpCircle className="h-3 w-3 cursor-help opacity-60" />
+                    </TooltipTrigger>
+                    <TooltipContent className="max-w-[220px] text-xs">
+                      Número de viajes donde el combustible consumido supera en más del 10% lo que el modelo predice como normal para esa distancia y vehículo.
+                    </TooltipContent>
+                  </Tooltip>
+                </p>
                 <p className="text-2xl font-bold">{flota.registros_con_desvio}</p>
                 <p className="text-[11px] text-muted-foreground mt-1">
                   {anomaliasAltas} críticas · desvío &gt;10%

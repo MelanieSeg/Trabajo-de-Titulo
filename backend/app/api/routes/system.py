@@ -1,7 +1,8 @@
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 
-from app.api.deps import get_db_session
+from app.api.deps import get_db_session, require_admin
+from app.db.models import User
 from app.schemas.api import PlatformConfigApplyResponse, PlatformConfigResponse
 from app.services.platform_service import apply_platform_config_to_db, get_platform_config
 
@@ -15,7 +16,11 @@ def read_platform_config() -> PlatformConfigResponse:
 
 
 @router.post("/apply-config", response_model=PlatformConfigApplyResponse)
-def apply_platform_config(db: Session = Depends(get_db_session)) -> PlatformConfigApplyResponse:
+def apply_platform_config(
+    db: Session = Depends(get_db_session),
+    _admin: User = Depends(require_admin),
+) -> PlatformConfigApplyResponse:
+    """Aplica la configuración de plataforma. Solo accesible para administradores."""
     payload = apply_platform_config_to_db(db, force_reload=True)
     db.commit()
     return PlatformConfigApplyResponse(**payload)

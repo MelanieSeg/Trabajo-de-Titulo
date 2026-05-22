@@ -10,7 +10,7 @@ from typing import Any, Literal, Optional
 import joblib
 import numpy as np
 import pandas as pd
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Response
 from pydantic import BaseModel, Field
 from sqlalchemy import func
 from sqlalchemy.orm import Session
@@ -481,6 +481,93 @@ def consumo_mensual(db: Session = Depends(get_db)) -> list[dict[str, Any]]:
             },
         })
     return result
+
+
+@router.get("/exportar-retc")
+def exportar_retc(
+    anio: Optional[int] = None,
+    db: Session = Depends(get_db),
+) -> Response:
+    """
+    Exporta un CSV con las transacciones de flota en formato compatible con
+    el reporte RETC (Registro de Emisiones y Transferencia de Contaminantes)
+    exigido por la Ley 21.305 — Scope 1 combustión móvil.
+    Filtra por año si se indica; de lo contrario exporta todo.
+    """
+    model = _get_model()
+
+    query = db.query(FuelTransaction).filter(FuelTransaction.fuel_liters_real.isnot(None))
+    if anio:
+        query = query.filter(func.extract("year", FuelTransaction.fecha) == anio)
+    transacciones = query.order_by(FuelTransaction.fecha).all()
+
+    NOMBRES_MES = ["Ene","Feb","Mar","Abr","May","Jun","Jul","Ago","Sep","Oct","Nov","Dic"]
+    FACTOR_CO2 = {"D": 2.68, "G": 1.89}
+    TIPO_LABEL = {"D": "Diesel", "G": "Gas Oil"}
+
+    header = [
+        "periodo",
+        "vehicle_id",
+        "vehicle_cat",
+        "tipo_combustible",
+        "factor_emision_kgCO2_L",
+        "dist_km",
+        "litros_reales",
+        "litros_esperados",
+        "exceso_litros",
+        "co2_real_kg",
+        "co2_esperado_kg",
+        "co2_exceso_kg",
+        "precio_litro_clp",
+        "costo_exceso_clp",
+        "severidad",
+        "notas",
+    ]
+
+    rows = [",".join(header)]
+    for t in transacciones:
+        real = float(t.fuel_liters_real)  # type: ignore[arg-type]
+        pred = round(_predecir_litros(model, t.dist_km, t.km_per_liter, t.vehicle_cat, t.fuel_type), 2)
+        exceso = round(max(real - pred, 0.0), 2)
+        factor = FACTOR_CO2.get(t.fuel_type, 2.68)
+        desvio_pct = (real - pred) / pred * 100 if pred > 0 else 0.0
+        severidad = (
+            "alta" if desvio_pct >= 35
+            else "media" if desvio_pct >= 20
+            else "baja" if desvio_pct >= 10
+            else "normal"
+        )
+        mes_label = NOMBRES_MES[t.fecha.month - 1]
+        periodo = f"{mes_label} {t.fecha.year}"
+
+        notas = (t.notas or "").replace(",", ";")
+        row = [
+            periodo,
+            t.vehicle_id,
+            t.vehicle_cat,
+            TIPO_LABEL.get(t.fuel_type, t.fuel_type),
+            str(factor),
+            str(round(t.dist_km, 1)),
+            str(round(real, 2)),
+            str(pred),
+            str(exceso),
+            str(round(real * factor, 2)),
+            str(round(pred * factor, 2)),
+            str(round(exceso * factor, 2)),
+            str(round(t.precio_litro_clp, 0)),
+            str(round(exceso * t.precio_litro_clp, 0)),
+            severidad,
+            notas,
+        ]
+        rows.append(",".join(row))
+
+    csv_content = "\n".join(rows)
+    filename = f"retc_scope1_combustion_movil_{anio or 'todos'}.csv"
+    return Response(
+        content=csv_content.encode("utf-8-sig"),  # utf-8-sig para que Excel lo abra bien
+        media_type="text/csv",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
 
 
 @router.get("/transacciones", response_model=list[FuelTransactionResponse])

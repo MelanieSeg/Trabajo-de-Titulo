@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from "react";
 import {
   Brain, Fuel, Loader2, AlertTriangle, CheckCircle,
-  Info, TrendingDown, DollarSign, Leaf, TriangleAlert, History,
+  Info, TrendingDown, DollarSign, Leaf, TriangleAlert, History, PlusCircle, ClipboardList,
 } from "lucide-react";
 import { DashboardLayout } from "@/components/DashboardLayout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -11,9 +11,11 @@ import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { toast } from "sonner";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
-  predictFuelConsumption, getFuelHistorial,
+  predictFuelConsumption, getFuelHistorial, createFuelTransaccion, getFuelTransacciones,
   type FuelPredictionRequest, type FuelPredictionResponse, type FuelPredictionLogItem,
+  type FuelTransactionCreate, type FuelTransactionItem,
 } from "@/lib/api";
 
 const VEHICLE_LABELS: Record<FuelPredictionRequest["vehicle_cat"], string> = {
@@ -82,9 +84,31 @@ export default function PrediccionesCombustible() {
   const [result,       setResult]       = useState<FuelPredictionResponse | null>(null);
   const [litrosReales, setLitrosReales] = useState("");
   const [historial,    setHistorial]    = useState<FuelPredictionLogItem[]>([]);
+  const [showTxForm,   setShowTxForm]   = useState(false);
+  const [savingTx,     setSavingTx]     = useState(false);
+  const [pagHist,      setPagHist]      = useState(1);
+  const [txForm,       setTxForm]       = useState<{
+    vehicle_id: string; vehicle_cat: string; fuel_type: string;
+    fecha: string; dist_km: string; fuel_liters_real: string;
+    km_per_liter: string; precio_litro_clp: string; notas: string;
+  }>({
+    vehicle_id: "", vehicle_cat: "Van", fuel_type: "D",
+    fecha: new Date().toISOString().slice(0, 10),
+    dist_km: "", fuel_liters_real: "", km_per_liter: "",
+    precio_litro_clp: "1050", notas: "",
+  });
+  const queryClient = useQueryClient();
+
+  const { data: transacciones = [], refetch: refetchTx } = useQuery<FuelTransactionItem[]>({
+    queryKey: ["fuel-transacciones"],
+    queryFn: () => getFuelTransacciones(50),
+    staleTime: 1000 * 60 * 2,
+  });
+
+  const HIST_PAGE_SIZE = 10;
 
   const cargarHistorial = useCallback(() => {
-    getFuelHistorial(10).then(setHistorial).catch(() => {});
+    getFuelHistorial(50).then((data) => { setHistorial(data); setPagHist(1); }).catch(() => {});
   }, []);
 
   useEffect(() => { cargarHistorial(); }, [cargarHistorial]);
@@ -94,6 +118,38 @@ export default function PrediccionesCombustible() {
     form.fuel_type   !== "" &&
     parseFloat(form.dist_km)          > 0 &&
     parseFloat(form.precio_litro_clp) > 0;
+
+  async function handleSaveTx() {
+    if (!txForm.vehicle_id.trim() || !txForm.dist_km) {
+      toast.error("Patente/ID y distancia son obligatorios");
+      return;
+    }
+    setSavingTx(true);
+    try {
+      const payload: FuelTransactionCreate = {
+        vehicle_id:       txForm.vehicle_id.trim().toUpperCase(),
+        vehicle_cat:      txForm.vehicle_cat as FuelTransactionCreate["vehicle_cat"],
+        fuel_type:        txForm.fuel_type as FuelTransactionCreate["fuel_type"],
+        fecha:            txForm.fecha + "T08:00:00Z",
+        dist_km:          parseFloat(txForm.dist_km),
+        fuel_liters_real: txForm.fuel_liters_real ? parseFloat(txForm.fuel_liters_real) : null,
+        km_per_liter:     txForm.km_per_liter ? parseFloat(txForm.km_per_liter) : null,
+        precio_litro_clp: parseFloat(txForm.precio_litro_clp) || 1050,
+        notas:            txForm.notas || null,
+      };
+      await createFuelTransaccion(payload);
+      await queryClient.invalidateQueries({ queryKey: ["analisis-flota"] });
+      await queryClient.invalidateQueries({ queryKey: ["consumo-mensual-flota"] });
+      refetchTx();
+      toast.success(`Transacción de ${payload.vehicle_id} registrada`);
+      setTxForm((f) => ({ ...f, vehicle_id: "", dist_km: "", fuel_liters_real: "", notas: "" }));
+      setShowTxForm(false);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "No se pudo guardar la transacción");
+    } finally {
+      setSavingTx(false);
+    }
+  }
 
   function handleFuelTypeChange(v: FuelType) {
     setForm((f) => ({ ...f, fuel_type: v, precio_litro_clp: String(PRECIO_DEFAULT[v]) }));
@@ -474,70 +530,271 @@ export default function PrediccionesCombustible() {
           </Card>
         )}
 
-        {/* Historial de predicciones */}
-        {historial.length > 0 && (
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2 text-base">
-                <History className="h-4 w-4 text-muted-foreground" />
-                Historial de predicciones recientes
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="p-0">
+        {/* ── Registrar transacción real de flota ── */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center justify-between text-base">
+              <span className="flex items-center gap-2">
+                <PlusCircle className="h-4 w-4 text-orange-500" />
+                Registrar viaje real de flota
+              </span>
+              <Button variant="ghost" size="sm" onClick={() => setShowTxForm((v) => !v)}>
+                {showTxForm ? "Ocultar" : "Agregar"}
+              </Button>
+            </CardTitle>
+          </CardHeader>
+          {showTxForm && (
+            <CardContent className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+              <div className="space-y-1">
+                <Label className="text-xs">Patente / ID vehículo *</Label>
+                <Input placeholder="BCK-4521" value={txForm.vehicle_id}
+                  onChange={(e) => setTxForm((f) => ({ ...f, vehicle_id: e.target.value }))} />
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs">Categoría *</Label>
+                <Select value={txForm.vehicle_cat} onValueChange={(v) => setTxForm((f) => ({ ...f, vehicle_cat: v }))}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="Van">Van / Furgoneta</SelectItem>
+                    <SelectItem value="Truck">Camión</SelectItem>
+                    <SelectItem value="Bus">Bus / Minibús</SelectItem>
+                    <SelectItem value="Car">Automóvil</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs">Combustible *</Label>
+                <Select value={txForm.fuel_type} onValueChange={(v) => setTxForm((f) => ({ ...f, fuel_type: v, precio_litro_clp: v === "D" ? "1050" : "950" }))}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="D">Diésel</SelectItem>
+                    <SelectItem value="G">Gas Oil</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs">Fecha del viaje *</Label>
+                <Input type="date" value={txForm.fecha}
+                  onChange={(e) => setTxForm((f) => ({ ...f, fecha: e.target.value }))} />
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs">Distancia recorrida (km) *</Label>
+                <Input type="number" placeholder="350" value={txForm.dist_km}
+                  onChange={(e) => setTxForm((f) => ({ ...f, dist_km: e.target.value }))} />
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs">Litros cargados (real)</Label>
+                <Input type="number" placeholder="42.5" value={txForm.fuel_liters_real}
+                  onChange={(e) => setTxForm((f) => ({ ...f, fuel_liters_real: e.target.value }))} />
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs">Eficiencia del vehículo (km/L)</Label>
+                <Input type="number" placeholder="13" value={txForm.km_per_liter}
+                  onChange={(e) => setTxForm((f) => ({ ...f, km_per_liter: e.target.value }))} />
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs">Precio litro (CLP)</Label>
+                <Input type="number" value={txForm.precio_litro_clp}
+                  onChange={(e) => setTxForm((f) => ({ ...f, precio_litro_clp: e.target.value }))} />
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs">Notas</Label>
+                <Input placeholder="Observaciones opcionales" value={txForm.notas}
+                  onChange={(e) => setTxForm((f) => ({ ...f, notas: e.target.value }))} />
+              </div>
+              <div className="sm:col-span-2 lg:col-span-3 flex justify-end pt-1">
+                <Button onClick={handleSaveTx} disabled={savingTx}>
+                  {savingTx ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <PlusCircle className="h-4 w-4 mr-2" />}
+                  Guardar transacción
+                </Button>
+              </div>
+            </CardContent>
+          )}
+        </Card>
+
+        {/* Transacciones reales registradas */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2 text-base">
+              <ClipboardList className="h-4 w-4 text-muted-foreground" />
+              Transacciones de flota registradas
+              <span className="ml-auto text-xs font-normal text-muted-foreground">
+                {transacciones.length} registros
+              </span>
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="p-0">
+            {transacciones.length === 0 ? (
+              <p className="p-4 text-sm text-muted-foreground text-center">
+                No hay transacciones registradas aún. Usa el formulario de arriba para agregar la primera.
+              </p>
+            ) : (
               <div className="overflow-x-auto">
                 <table className="w-full text-sm">
                   <thead>
                     <tr className="border-b bg-muted/30 text-muted-foreground text-xs">
                       <th className="p-3 text-left">Fecha</th>
-                      <th className="p-3 text-left">Vehículo</th>
-                      <th className="p-3 text-left">Combustible</th>
+                      <th className="p-3 text-left">Patente</th>
+                      <th className="p-3 text-left">Tipo</th>
                       <th className="p-3 text-right">Distancia (km)</th>
-                      <th className="p-3 text-right">Litros pred.</th>
-                      <th className="p-3 text-right">CO₂ (kg)</th>
-                      <th className="p-3 text-right">Costo CLP</th>
-                      <th className="p-3 text-right">Ahorro posible (L)</th>
+                      <th className="p-3 text-right">Litros reales</th>
+                      <th className="p-3 text-right">km/L</th>
+                      <th className="p-3 text-left">Notas</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {historial.map((item) => (
-                      <tr key={item.id} className="border-b last:border-0 hover:bg-muted/20 transition-colors">
-                        <td className="p-3 text-muted-foreground whitespace-nowrap">
-                          {new Date(item.created_at).toLocaleString("es-CL", {
-                            day: "2-digit", month: "2-digit", year: "2-digit",
-                            hour: "2-digit", minute: "2-digit",
-                          })}
+                    {transacciones.map((t) => (
+                      <tr key={t.id} className="border-b last:border-0 hover:bg-muted/20 transition-colors">
+                        <td className="p-3 text-muted-foreground whitespace-nowrap text-xs">
+                          {new Date(t.fecha).toLocaleDateString("es-CL")}
                         </td>
-                        <td className="p-3">{item.vehicle_cat}</td>
+                        <td className="p-3">
+                          <span className="font-mono text-xs font-medium">{t.vehicle_id}</span>
+                          <span className="ml-1 text-xs text-muted-foreground">({t.vehicle_cat})</span>
+                        </td>
                         <td className="p-3">
                           <Badge variant="outline" className="text-xs">
-                            {item.fuel_type === "D" ? "Diésel" : "Gas Oil"}
+                            {t.fuel_type === "D" ? "Diésel" : "Gas Oil"}
                           </Badge>
                         </td>
                         <td className="p-3 text-right font-medium">
-                          {item.dist_km.toLocaleString("es-CL")}
-                        </td>
-                        <td className="p-3 text-right font-medium">
-                          {item.fuel_liters.toLocaleString("es-CL", { maximumFractionDigits: 1 })} L
+                          {t.dist_km.toLocaleString("es-CL")}
                         </td>
                         <td className="p-3 text-right">
-                          {item.co2_kg.toLocaleString("es-CL", { maximumFractionDigits: 1 })}
+                          {t.fuel_liters_real != null
+                            ? <span className="font-medium">{t.fuel_liters_real.toFixed(1)} L</span>
+                            : <span className="text-muted-foreground text-xs italic">no registrado</span>}
                         </td>
-                        <td className="p-3 text-right">
-                          {clp(item.costo_clp)}
+                        <td className="p-3 text-right text-muted-foreground">
+                          {t.km_per_liter != null ? t.km_per_liter.toFixed(1) : "—"}
                         </td>
-                        <td className="p-3 text-right text-green-600 font-medium">
-                          {item.ahorro_litros > 0
-                            ? `${item.ahorro_litros.toLocaleString("es-CL", { maximumFractionDigits: 1 })} L`
-                            : "—"}
+                        <td className="p-3 text-xs text-muted-foreground max-w-[180px] truncate">
+                          {t.notas || "—"}
                         </td>
                       </tr>
                     ))}
                   </tbody>
                 </table>
               </div>
-            </CardContent>
-          </Card>
-        )}
+            )}
+          </CardContent>
+        </Card>
+
+        {/* Historial de predicciones */}
+        {historial.length > 0 && (() => {
+          const totalPagesHist = Math.ceil(historial.length / HIST_PAGE_SIZE);
+          const historialPaginado = historial.slice(
+            (pagHist - 1) * HIST_PAGE_SIZE,
+            pagHist * HIST_PAGE_SIZE,
+          );
+          return (
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2 text-base">
+                  <History className="h-4 w-4 text-muted-foreground" />
+                  Historial de predicciones recientes
+                  <span className="ml-auto text-xs font-normal text-muted-foreground">
+                    {historial.length} registros
+                  </span>
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="p-0">
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="border-b bg-muted/30 text-muted-foreground text-xs">
+                        <th className="p-3 text-left">Fecha</th>
+                        <th className="p-3 text-left">Vehículo</th>
+                        <th className="p-3 text-left">Combustible</th>
+                        <th className="p-3 text-right">Distancia (km)</th>
+                        <th className="p-3 text-right">Litros pred.</th>
+                        <th className="p-3 text-right">CO₂ (kg)</th>
+                        <th className="p-3 text-right">Costo CLP</th>
+                        <th className="p-3 text-right">Ahorro posible (L)</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {historialPaginado.map((item) => (
+                        <tr key={item.id} className="border-b last:border-0 hover:bg-muted/20 transition-colors">
+                          <td className="p-3 text-muted-foreground whitespace-nowrap">
+                            {new Date(item.created_at).toLocaleString("es-CL", {
+                              day: "2-digit", month: "2-digit", year: "2-digit",
+                              hour: "2-digit", minute: "2-digit",
+                            })}
+                          </td>
+                          <td className="p-3">{item.vehicle_cat}</td>
+                          <td className="p-3">
+                            <Badge variant="outline" className="text-xs">
+                              {item.fuel_type === "D" ? "Diésel" : "Gas Oil"}
+                            </Badge>
+                          </td>
+                          <td className="p-3 text-right font-medium">
+                            {item.dist_km.toLocaleString("es-CL")}
+                          </td>
+                          <td className="p-3 text-right font-medium">
+                            {item.fuel_liters.toLocaleString("es-CL", { maximumFractionDigits: 1 })} L
+                          </td>
+                          <td className="p-3 text-right">
+                            {item.co2_kg.toLocaleString("es-CL", { maximumFractionDigits: 1 })}
+                          </td>
+                          <td className="p-3 text-right">
+                            {clp(item.costo_clp)}
+                          </td>
+                          <td className="p-3 text-right text-green-600 font-medium">
+                            {item.ahorro_litros > 0
+                              ? `${item.ahorro_litros.toLocaleString("es-CL", { maximumFractionDigits: 1 })} L`
+                              : "—"}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+
+                {/* Controles de paginación */}
+                {totalPagesHist > 1 && (
+                  <div className="flex items-center justify-between px-4 py-3 border-t text-xs text-muted-foreground">
+                    <span>
+                      Página {pagHist} de {totalPagesHist} · mostrando {historialPaginado.length} de {historial.length}
+                    </span>
+                    <div className="flex items-center gap-1">
+                      <button
+                        type="button"
+                        className="rounded px-2.5 py-1 border hover:bg-muted disabled:opacity-40 transition-colors"
+                        disabled={pagHist === 1}
+                        onClick={() => setPagHist((p) => p - 1)}
+                      >
+                        ← Anterior
+                      </button>
+                      {Array.from({ length: totalPagesHist }, (_, i) => i + 1).map((p) => (
+                        <button
+                          key={p}
+                          type="button"
+                          className={`rounded px-2.5 py-1 border transition-colors ${
+                            p === pagHist
+                              ? "bg-primary text-primary-foreground border-primary"
+                              : "hover:bg-muted"
+                          }`}
+                          onClick={() => setPagHist(p)}
+                        >
+                          {p}
+                        </button>
+                      ))}
+                      <button
+                        type="button"
+                        className="rounded px-2.5 py-1 border hover:bg-muted disabled:opacity-40 transition-colors"
+                        disabled={pagHist === totalPagesHist}
+                        onClick={() => setPagHist((p) => p + 1)}
+                      >
+                        Siguiente →
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          );
+        })()}
 
       </div>
     </DashboardLayout>

@@ -6,6 +6,7 @@ import {
   Fuel, Flame, Wind, Recycle, Cloud, FlaskConical, Factory
 } from "lucide-react";
 import { NavLink } from "@/components/NavLink";
+import { useAuth } from "@/contexts/AuthContext";
 import {
   Sidebar, SidebarContent, SidebarGroup, SidebarGroupContent,
   SidebarGroupLabel, SidebarMenu, SidebarMenuButton, SidebarMenuItem,
@@ -50,14 +51,19 @@ const managementItems = [
   { title: "Calendario", url: "/calendario", icon: Calendar },
 ];
 
-const adminItems = [
+// Items visibles para todos los usuarios autenticados
+const settingsItems = [
   { title: "Alertas", url: "/alertas", icon: Bell },
-  { title: "Usuarios", url: "/usuarios", icon: Users },
   { title: "Empresa", url: "/empresa", icon: Building2 },
   { title: "Fiscalización", url: "/fiscalizacion", icon: Scale },
-  { title: "Configuración", url: "/configuracion", icon: Settings },
   { title: "Seguridad", url: "/seguridad", icon: Shield },
   { title: "Ayuda", url: "/ayuda", icon: HelpCircle },
+];
+
+// Items exclusivos de administradores
+const adminOnlyItems = [
+  { title: "Usuarios", url: "/usuarios", icon: Users },
+  { title: "Configuración", url: "/configuracion", icon: Settings },
 ];
 
 function SidebarSection({ label, items }: { label: string; items: typeof mainItems }) {
@@ -94,7 +100,14 @@ function SidebarSection({ label, items }: { label: string; items: typeof mainIte
 
 export function AppSidebar() {
   const { state } = useSidebar();
+  const { user } = useAuth();
   const collapsed = state === "collapsed";
+  const isAdmin = user?.role === "ADMIN";
+
+  // Construir lista de items de administración según el rol
+  const adminItems = isAdmin
+    ? [...settingsItems, ...adminOnlyItems]
+    : settingsItems;
 
   return (
     <Sidebar collapsible="icon" className="sidebar-gradient border-r-0">

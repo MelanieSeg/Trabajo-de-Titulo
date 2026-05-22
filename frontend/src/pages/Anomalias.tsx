@@ -1,11 +1,14 @@
-import { AlertTriangle, CheckCircle, Clock, Fuel, XCircle } from "lucide-react";
+import { AlertTriangle, CheckCircle, Clock, Download, Fuel, XCircle } from "lucide-react";
 import { DashboardLayout } from "@/components/DashboardLayout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { useOperationsOverview } from "@/hooks/useOperationsOverview";
-import { resolveAlert, getAnalisisFlota, type AnalisisFlotaResult } from "@/lib/api";
+import { resolveAlert, getAnalisisFlota, exportRetcCsv, type AnalisisFlotaResult } from "@/lib/api";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useState } from "react";
+import { Input } from "@/components/ui/input";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { toast } from "sonner";
 
 const severityConfig: Record<string, { icon: typeof AlertTriangle; color: string; badge: string }> = {
@@ -47,6 +50,40 @@ export default function Anomalias() {
   const flotaAltas   = anomaliasFlota.filter(a => a.severidad === "alta").length;
   const flotaMedias  = anomaliasFlota.filter(a => a.severidad === "media").length;
   const flotaBajas   = anomaliasFlota.filter(a => a.severidad === "baja").length;
+
+  // Filtros de la tabla de flota
+  const [filtroVehiculo,  setFiltroVehiculo]  = useState("");
+  const [filtroSeveridad, setFiltroSeveridad] = useState<"all" | "alta" | "media" | "baja">("all");
+  const [pagAnomFlota,    setPagAnomFlota]    = useState(1);
+  const ANOM_PAGE_SIZE = 10;
+
+  const anomaliasFiltradas = anomaliasFlota.filter((a) => {
+    const matchVehiculo  = filtroVehiculo      === ""    || a.vehicle_id.toLowerCase().includes(filtroVehiculo.toLowerCase());
+    const matchSeveridad = filtroSeveridad     === "all" || a.severidad === filtroSeveridad;
+    return matchVehiculo && matchSeveridad;
+  });
+
+  const totalPagesAnom = Math.ceil(anomaliasFiltradas.length / ANOM_PAGE_SIZE);
+  const anomaliasPaginadas = anomaliasFiltradas.slice(
+    (pagAnomFlota - 1) * ANOM_PAGE_SIZE,
+    pagAnomFlota * ANOM_PAGE_SIZE,
+  );
+
+  const handleExportRetc = async () => {
+    try {
+      const anioActual = new Date().getFullYear();
+      const blob = await exportRetcCsv(anioActual);
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = `retc_scope1_combustion_movil_${anioActual}.csv`;
+      link.click();
+      URL.revokeObjectURL(url);
+      toast.success("Reporte RETC descargado");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "No se pudo exportar el reporte RETC");
+    }
+  };
 
   return (
     <DashboardLayout>
@@ -129,9 +166,18 @@ export default function Anomalias() {
             <div className="flex items-center gap-2 pt-2">
               <Fuel className="h-5 w-5 text-orange-500" />
               <h3 className="font-semibold text-foreground">Anomalías Detectadas por IA — Flota de Combustible</h3>
-              <Badge variant="secondary" className="bg-orange-100 text-orange-800 ml-auto">
+              <Badge variant="secondary" className="bg-orange-100 text-orange-800">
                 Modelo Random Forest · err.rel 6.13%
               </Badge>
+              <Button
+                variant="outline"
+                size="sm"
+                className="ml-auto flex items-center gap-1.5"
+                onClick={handleExportRetc}
+              >
+                <Download className="h-3.5 w-3.5" />
+                Exportar RETC
+              </Button>
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
@@ -169,6 +215,42 @@ export default function Anomalias() {
                   </span>
                 </CardTitle>
               </CardHeader>
+              <CardContent>
+                {/* Filtros */}
+                <div className="flex flex-col sm:flex-row gap-2 mb-3">
+                  <Input
+                    placeholder="Buscar por patente (ej: BCK-4521)"
+                    className="sm:max-w-[220px] h-8 text-xs"
+                    value={filtroVehiculo}
+                    onChange={(e) => { setFiltroVehiculo(e.target.value); setPagAnomFlota(1); }}
+                  />
+                  <Select
+                    value={filtroSeveridad}
+                    onValueChange={(v) => { setFiltroSeveridad(v as typeof filtroSeveridad); setPagAnomFlota(1); }}
+                  >
+                    <SelectTrigger className="sm:max-w-[160px] h-8 text-xs">
+                      <SelectValue placeholder="Todas las severidades" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">Todas las severidades</SelectItem>
+                      <SelectItem value="alta">Solo Alta</SelectItem>
+                      <SelectItem value="media">Solo Media</SelectItem>
+                      <SelectItem value="baja">Solo Baja</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  {(filtroVehiculo || filtroSeveridad !== "all") && (
+                    <button
+                      className="text-xs text-muted-foreground underline self-center"
+                      onClick={() => { setFiltroVehiculo(""); setFiltroSeveridad("all"); setPagAnomFlota(1); }}
+                    >
+                      Limpiar filtros
+                    </button>
+                  )}
+                  <span className="text-xs text-muted-foreground self-center ml-auto">
+                    {anomaliasFiltradas.length} de {anomaliasFlota.length} registros
+                  </span>
+                </div>
+              </CardContent>
               <CardContent className="p-0">
                 <div className="overflow-x-auto">
                   <table className="w-full text-sm">
@@ -185,7 +267,14 @@ export default function Anomalias() {
                       </tr>
                     </thead>
                     <tbody>
-                      {anomaliasFlota.map((a) => {
+                      {anomaliasFiltradas.length === 0 && (
+                        <tr>
+                          <td colSpan={8} className="p-6 text-center text-xs text-muted-foreground">
+                            No hay registros que coincidan con los filtros aplicados.
+                          </td>
+                        </tr>
+                      )}
+                      {anomaliasPaginadas.map((a) => {
                         const cfg = severidadFlotaConfig[a.severidad];
                         return (
                           <tr key={a.id_transaccion} className="border-b last:border-0 hover:bg-muted/20 transition-colors">
@@ -212,17 +301,60 @@ export default function Anomalias() {
                     </tbody>
                     <tfoot>
                       <tr className="bg-muted/20 font-semibold text-xs">
-                        <td className="p-3" colSpan={6}>Total exceso detectado</td>
+                        <td className="p-3" colSpan={6}>
+                          Total exceso detectado{filtroVehiculo || filtroSeveridad ? " (filtrado)" : ""}
+                        </td>
                         <td className="p-3 text-right text-orange-600">
-                          {anomaliasFlota.reduce((s, a) => s + a.co2_exceso_kg, 0).toFixed(1)} kg
+                          {anomaliasFiltradas.reduce((s, a) => s + a.co2_exceso_kg, 0).toFixed(1)} kg
                         </td>
                         <td className="p-3 text-right">
-                          ${anomaliasFlota.reduce((s, a) => s + a.costo_exceso_clp, 0).toLocaleString("es-CL")}
+                          ${anomaliasFiltradas.reduce((s, a) => s + a.costo_exceso_clp, 0).toLocaleString("es-CL")}
                         </td>
                       </tr>
                     </tfoot>
                   </table>
                 </div>
+
+                {/* Controles de paginación */}
+                {totalPagesAnom > 1 && (
+                  <div className="flex items-center justify-between px-4 py-3 border-t text-xs text-muted-foreground">
+                    <span>
+                      Página {pagAnomFlota} de {totalPagesAnom} · mostrando {anomaliasPaginadas.length} de {anomaliasFiltradas.length}
+                    </span>
+                    <div className="flex items-center gap-1">
+                      <button
+                        type="button"
+                        className="rounded px-2.5 py-1 border hover:bg-muted disabled:opacity-40 transition-colors"
+                        disabled={pagAnomFlota === 1}
+                        onClick={() => setPagAnomFlota((p) => p - 1)}
+                      >
+                        ← Anterior
+                      </button>
+                      {Array.from({ length: totalPagesAnom }, (_, i) => i + 1).map((p) => (
+                        <button
+                          key={p}
+                          type="button"
+                          className={`rounded px-2.5 py-1 border transition-colors ${
+                            p === pagAnomFlota
+                              ? "bg-primary text-primary-foreground border-primary"
+                              : "hover:bg-muted"
+                          }`}
+                          onClick={() => setPagAnomFlota(p)}
+                        >
+                          {p}
+                        </button>
+                      ))}
+                      <button
+                        type="button"
+                        className="rounded px-2.5 py-1 border hover:bg-muted disabled:opacity-40 transition-colors"
+                        disabled={pagAnomFlota === totalPagesAnom}
+                        onClick={() => setPagAnomFlota((p) => p + 1)}
+                      >
+                        Siguiente →
+                      </button>
+                    </div>
+                  </div>
+                )}
               </CardContent>
             </Card>
           </>

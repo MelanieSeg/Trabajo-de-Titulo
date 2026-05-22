@@ -7,6 +7,7 @@ import { lazy, Suspense } from "react";
 import { ThemeProvider } from "./components/theme-provider";
 import { AuthProvider } from "./contexts/AuthContext";
 import { ProtectedRoute } from "./components/ProtectedRoute";
+import { AdminRoute } from "./components/AdminRoute";
 import { PublicRoute } from "./components/PublicRoute";
 import Index from "./pages/Index.tsx";
 import NotFound from "./pages/NotFound.tsx";
@@ -231,9 +232,9 @@ const App = () => (
                 <Route
                   path="/usuarios"
                   element={
-                    <ProtectedRoute>
+                    <AdminRoute>
                       <UsuariosPage />
-                    </ProtectedRoute>
+                    </AdminRoute>
                   }
                 />
                 <Route
@@ -247,9 +248,9 @@ const App = () => (
                 <Route
                   path="/configuracion"
                   element={
-                    <ProtectedRoute>
+                    <AdminRoute>
                       <Configuracion />
-                    </ProtectedRoute>
+                    </AdminRoute>
                   }
                 />
                 <Route

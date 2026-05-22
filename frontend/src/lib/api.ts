@@ -1241,3 +1241,10 @@ export function createFuelTransaccion(payload: FuelTransactionCreate): Promise<F
     body: JSON.stringify(payload),
   });
 }
+
+export async function exportRetcCsv(anio?: number): Promise<Blob> {
+  const path = anio
+    ? `/combustible-ml/exportar-retc?anio=${anio}`
+    : "/combustible-ml/exportar-retc";
+  return exportBlob(path);
+}
