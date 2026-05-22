@@ -3,7 +3,6 @@ ETL Pipeline - Gestión de Combustibles de Flota
 ================================================
 Tesis: Sistema Inteligente Basado en Aprendizaje Supervisado
         para la Gestión de Combustibles y Trazabilidad de Emisiones
-Autora: Melanie Constanza Seguel Orellana
 """
 
 import pandas as pd

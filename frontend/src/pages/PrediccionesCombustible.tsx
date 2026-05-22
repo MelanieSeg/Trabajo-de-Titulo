@@ -474,7 +474,7 @@ export default function PrediccionesCombustible() {
           </Card>
         )}
 
-        {/* Historial de predicciones persistidas (OE6) */}
+        {/* Historial de predicciones */}
         {historial.length > 0 && (
           <Card>
             <CardHeader>

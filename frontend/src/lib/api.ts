@@ -1101,3 +1101,97 @@ export interface FuelPredictionLogItem {
 export function getFuelHistorial(limit = 20): Promise<FuelPredictionLogItem[]> {
   return request<FuelPredictionLogItem[]>(`/combustible-ml/historial?limit=${limit}`);
 }
+
+export interface FuelTransactionItem {
+  id: number;
+  vehicle_id: string;
+  vehicle_cat: string;
+  fuel_type: string;
+  fecha: string;
+  dist_km: number;
+  fuel_liters_real: number | null;
+  km_per_liter: number | null;
+  precio_litro_clp: number;
+  notas: string | null;
+  created_at: string;
+}
+
+export interface FuelTransactionCreate {
+  vehicle_id: string;
+  vehicle_cat: "Van" | "Truck" | "Bus" | "Car";
+  fuel_type: "D" | "G";
+  fecha: string;
+  dist_km: number;
+  fuel_liters_real?: number | null;
+  km_per_liter?: number | null;
+  precio_litro_clp: number;
+  notas?: string | null;
+}
+
+export interface AnomaliaFlota {
+  id_transaccion: number;
+  vehicle_id: string;
+  vehicle_cat: string;
+  fecha: string;
+  fuel_liters_real: number;
+  fuel_liters_predicho: number;
+  desvio_pct: number;
+  severidad: "baja" | "media" | "alta";
+  co2_exceso_kg: number;
+  precio_litro_clp: number;
+  costo_exceso_clp: number;
+  notas: string | null;
+}
+
+export interface ConsumoMensualFlota {
+  periodo: string;
+  year: number;
+  month: number;
+  label: string;
+  real_litros: number;
+  predicho_litros: number;
+  desvio_pct: number;
+  co2_real_kg: number;
+  co2_predicho_kg: number;
+  diesel_real_l: number | null;
+  gasoil_real_l: number | null;
+  diesel_pred_l: number | null;
+  gasoil_pred_l: number | null;
+}
+
+export interface AnalisisFlotaResult {
+  precision_promedio_pct: number;
+  total_registros_analizados: number;
+  registros_con_desvio: number;
+  ahorro_proyectado_litros: number;
+  ahorro_proyectado_clp: number;
+  reduccion_co2_proyectada_kg: number;
+  anomalias: AnomaliaFlota[];
+  consumo_por_periodo: ConsumoMensualFlota[];
+  modelo_info: {
+    nombre: string;
+    error_relativo_pct: number;
+    registros_entrenamiento: number;
+    registros_flota_analizados: number;
+    total_transacciones_sistema: number;
+  };
+}
+
+export function getAnalisisFlota(): Promise<AnalisisFlotaResult> {
+  return request<AnalisisFlotaResult>("/combustible-ml/analisis-flota");
+}
+
+export function getConsumoMensualFlota(): Promise<Record<string, unknown>[]> {
+  return request<Record<string, unknown>[]>("/combustible-ml/consumo-mensual");
+}
+
+export function getFuelTransacciones(limit = 50): Promise<FuelTransactionItem[]> {
+  return request<FuelTransactionItem[]>(`/combustible-ml/transacciones?limit=${limit}`);
+}
+
+export function createFuelTransaccion(payload: FuelTransactionCreate): Promise<FuelTransactionItem> {
+  return request<FuelTransactionItem>("/combustible-ml/transacciones", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}

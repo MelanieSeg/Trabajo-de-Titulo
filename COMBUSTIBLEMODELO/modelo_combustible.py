@@ -3,7 +3,6 @@ Módulo de Entrenamiento: Modelos predictivos de consumo de combustible
 =======================================================================
 Tesis: Sistema Inteligente Basado en Aprendizaje Supervisado
         para la Gestión de Combustibles y Trazabilidad de Emisiones
-Autora: Melanie Constanza Seguel Orellana
 Etapa CRISP-DM: Modeling + Evaluation (Sprint 3)
 
 Modelos comparados:

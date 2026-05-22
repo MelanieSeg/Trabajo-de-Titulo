@@ -1,4 +1,4 @@
-"""Tests funcionales para predicción de consumo de combustible (OE7)"""
+"""Tests funcionales para predicción de consumo de combustible"""
 import numpy as np
 import pytest
 from fastapi.testclient import TestClient

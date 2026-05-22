@@ -1,28 +1,29 @@
 """
-Ruta de predicción de consumo de combustible.
-Modelo: Árbol de Decisión (CRISP-DM Sprint 3, hold-out 2018-19, err.rel 9.04%)
-Autora: Melanie Constanza Seguel Orellana
+Módulo de IA para gestión de combustible de flota.
+Detección automática de ineficiencias operativas, trazabilidad y reporte RETC.
 """
 
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
-from typing import Literal, Optional
+from typing import Any, Literal, Optional
 
 import joblib
 import numpy as np
 import pandas as pd
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.api.deps import get_db
-from app.db.models import FuelPredictionLog
+from app.db.models import FuelPredictionLog, FuelTransaction
 
 router = APIRouter(prefix="/combustible-ml", tags=["combustible-ml"])
 
 _MODEL_PATH = Path(__file__).parent.parent.parent.parent / "data" / "modelo_combustible.joblib"
 _CO2_FACTOR: dict[str, float] = {"D": 2.68, "G": 1.89}
 _MEJORA_EFICIENCIA_PCT = 10.0
+_UMBRAL_ANOMALIA_PCT = 10.0
 
 _model = None
 
@@ -46,40 +47,28 @@ def _predecir_litros(
     vehicle_cat: str,
     fuel_type: str,
 ) -> float:
-    """
-    Llama al pipeline sklearn.
-    - km_per_liter None → NaN; el SimpleImputer usa la mediana del entrenamiento.
-    - litros_teoricos = dist_km / km_per_liter combinan ambas variables en un
-      predictor lineal que hace al modelo sensible a cambios en distancia y
-      eficiencia simultáneamente (feature engineering CRISP-DM Sprint 3).
-    """
     kpl = km_per_liter if km_per_liter is not None else np.nan
     litros_teo = dist_km / kpl if km_per_liter is not None else np.nan
     features = pd.DataFrame([{
-        "dist_km":        dist_km,
-        "km_per_liter":   kpl,
+        "dist_km":         dist_km,
+        "km_per_liter":    kpl,
         "litros_teoricos": litros_teo,
-        "vehicle_cat":    vehicle_cat,
-        "fuel_type":      fuel_type,
-        "year":           "2018-19",
+        "vehicle_cat":     vehicle_cat,
+        "fuel_type":       fuel_type,
+        "year":            "2018-19",
     }])
     log_pred = float(model.predict(features)[0])
     return max(float(np.expm1(log_pred)), 0.0)
 
 
+# ─── Schemas ──────────────────────────────────────────────────────────────────
+
 class FuelPredictionRequest(BaseModel):
     vehicle_cat: Literal["Van", "Truck", "Bus", "Car"] = Field(..., description="Categoría del vehículo")
-    fuel_type: Literal["D", "G"] = Field(..., description="Tipo de combustible: D=Diésel, G=Gas Oil")
-    dist_km: float = Field(..., gt=0, description="Distancia total del período de operación en km")
-    km_per_liter: Optional[float] = Field(
-        default=None,
-        gt=0,
-        description=(
-            "Eficiencia histórica en km/L. "
-            "Si se omite, el modelo usa la mediana del dataset de entrenamiento."
-        ),
-    )
-    precio_litro_clp: float = Field(default=1050.0, gt=0, description="Precio por litro en CLP")
+    fuel_type: Literal["D", "G"] = Field(..., description="D=Diésel, G=Gas Oil")
+    dist_km: float = Field(..., gt=0)
+    km_per_liter: Optional[float] = Field(default=None, gt=0)
+    precio_litro_clp: float = Field(default=1050.0, gt=0)
 
 
 class EscenarioOptimizacion(BaseModel):
@@ -130,6 +119,79 @@ class FuelPredictionLogResponse(BaseModel):
     model_config = {"from_attributes": True}
 
 
+class FuelTransactionCreate(BaseModel):
+    vehicle_id: str = Field(..., min_length=1, max_length=50)
+    vehicle_cat: Literal["Van", "Truck", "Bus", "Car"]
+    fuel_type: Literal["D", "G"]
+    fecha: datetime
+    dist_km: float = Field(..., gt=0)
+    fuel_liters_real: Optional[float] = Field(default=None, gt=0)
+    km_per_liter: Optional[float] = Field(default=None, gt=0)
+    precio_litro_clp: float = Field(default=1050.0, gt=0)
+    notas: Optional[str] = Field(default=None, max_length=255)
+
+
+class FuelTransactionResponse(BaseModel):
+    id: int
+    vehicle_id: str
+    vehicle_cat: str
+    fuel_type: str
+    fecha: datetime
+    dist_km: float
+    fuel_liters_real: Optional[float]
+    km_per_liter: Optional[float]
+    precio_litro_clp: float
+    notas: Optional[str]
+    created_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+class AnomaliaFlota(BaseModel):
+    id_transaccion: int
+    vehicle_id: str
+    vehicle_cat: str
+    fecha: str
+    fuel_liters_real: float
+    fuel_liters_predicho: float
+    desvio_pct: float
+    severidad: Literal["baja", "media", "alta"]
+    co2_exceso_kg: float
+    precio_litro_clp: float
+    costo_exceso_clp: float
+    notas: Optional[str]
+
+
+class ConsumoMensual(BaseModel):
+    periodo: str
+    year: int
+    month: int
+    label: str
+    real_litros: float
+    predicho_litros: float
+    desvio_pct: float
+    co2_real_kg: float
+    co2_predicho_kg: float
+    diesel_real_l: Optional[float] = None
+    gasoil_real_l: Optional[float] = None
+    diesel_pred_l: Optional[float] = None
+    gasoil_pred_l: Optional[float] = None
+
+
+class AnalisisFlotaResponse(BaseModel):
+    precision_promedio_pct: float
+    total_registros_analizados: int
+    registros_con_desvio: int
+    ahorro_proyectado_litros: float
+    ahorro_proyectado_clp: float
+    reduccion_co2_proyectada_kg: float
+    anomalias: list[AnomaliaFlota]
+    consumo_por_periodo: list[ConsumoMensual]
+    modelo_info: dict[str, Any]
+
+
+# ─── Endpoints ────────────────────────────────────────────────────────────────
+
 @router.post("/predict", response_model=FuelPredictionResponse)
 def predict_fuel(
     payload: FuelPredictionRequest,
@@ -139,13 +201,11 @@ def predict_fuel(
     co2_factor = _CO2_FACTOR[payload.fuel_type]
     fue_imputado = payload.km_per_liter is None
 
-    # Predicción base
     fuel_liters = _predecir_litros(
         model, payload.dist_km, payload.km_per_liter,
         payload.vehicle_cat, payload.fuel_type,
     )
 
-    # km_per_liter efectivo: si fue imputado, lo derivamos de la predicción
     km_pl_efectivo = (
         round(payload.dist_km / fuel_liters, 2) if fue_imputado and fuel_liters > 0
         else payload.km_per_liter or 1.0
@@ -155,9 +215,6 @@ def predict_fuel(
     costo_clp = round(fuel_liters * payload.precio_litro_clp, 0)
     costo_por_km = round(costo_clp / payload.dist_km, 1) if payload.dist_km > 0 else 0.0
 
-    # Escenario optimizado: segunda llamada real al modelo con +10% de eficiencia.
-    # Random Forest interpola entre árboles, por lo que produce predicciones
-    # distintas para cambios continuos de eficiencia (sin función escalón).
     km_pl_opt = round(km_pl_efectivo * (1 + _MEJORA_EFICIENCIA_PCT / 100), 2)
     fuel_liters_opt = _predecir_litros(
         model, payload.dist_km, km_pl_opt,
@@ -183,7 +240,6 @@ def predict_fuel(
         mejora_eficiencia_pct=_MEJORA_EFICIENCIA_PCT,
     )
 
-    # Persistir predicción para trazabilidad (OE6)
     db.add(FuelPredictionLog(
         vehicle_cat=payload.vehicle_cat,
         fuel_type=payload.fuel_type,
@@ -223,7 +279,6 @@ def get_historial(
     limit: int = 20,
     db: Session = Depends(get_db),
 ) -> list[FuelPredictionLogResponse]:
-    """Retorna las últimas predicciones guardadas, más recientes primero."""
     registros = (
         db.query(FuelPredictionLog)
         .order_by(FuelPredictionLog.created_at.desc())
@@ -231,3 +286,233 @@ def get_historial(
         .all()
     )
     return registros
+
+
+@router.get("/analisis-flota", response_model=AnalisisFlotaResponse)
+def analisis_flota(db: Session = Depends(get_db)) -> AnalisisFlotaResponse:
+    """
+    Corre el modelo sobre todas las transacciones reales registradas.
+    Detecta automáticamente ineficiencias operativas y las persiste
+    para trazabilidad y reporte RETC.
+    """
+    model = _get_model()
+
+    transacciones = (
+        db.query(FuelTransaction)
+        .filter(FuelTransaction.fuel_liters_real.isnot(None))
+        .order_by(FuelTransaction.fecha)
+        .all()
+    )
+
+    if not transacciones:
+        return AnalisisFlotaResponse(
+            precision_promedio_pct=0.0,
+            total_registros_analizados=0,
+            registros_con_desvio=0,
+            ahorro_proyectado_litros=0.0,
+            ahorro_proyectado_clp=0.0,
+            reduccion_co2_proyectada_kg=0.0,
+            anomalias=[],
+            consumo_por_periodo=[],
+            modelo_info={"nombre": "Random Forest + litros_teoricos", "error_relativo_pct": 6.13},
+        )
+
+    anomalias: list[AnomaliaFlota] = []
+    precision_acum = 0.0
+    total_exceso_litros = 0.0
+    total_exceso_clp = 0.0
+    total_exceso_co2 = 0.0
+
+    # Agrupación mensual: {periodo: {diesel_real, gasoil_real, diesel_pred, gasoil_pred}}
+    periodos: dict[str, dict[str, float]] = {}
+
+    for t in transacciones:
+        real = float(t.fuel_liters_real)  # type: ignore[arg-type]
+        pred = _predecir_litros(model, t.dist_km, t.km_per_liter, t.vehicle_cat, t.fuel_type)
+        desvio_pct = ((real - pred) / pred * 100) if pred > 0 else 0.0
+        precision_acum += max(0.0, 100.0 - abs(desvio_pct))
+
+        co2_factor = _CO2_FACTOR[t.fuel_type]
+        periodo = t.fecha.strftime("%Y-%m")
+        if periodo not in periodos:
+            periodos[periodo] = {
+                "year": t.fecha.year, "month": t.fecha.month,
+                "diesel_real": 0.0, "gasoil_real": 0.0,
+                "diesel_pred": 0.0, "gasoil_pred": 0.0,
+            }
+        if t.fuel_type == "D":
+            periodos[periodo]["diesel_real"] += real
+            periodos[periodo]["diesel_pred"] += pred
+        else:
+            periodos[periodo]["gasoil_real"] += real
+            periodos[periodo]["gasoil_pred"] += pred
+
+        if desvio_pct > _UMBRAL_ANOMALIA_PCT:
+            if desvio_pct > 35:
+                severidad = "alta"
+            elif desvio_pct > 20:
+                severidad = "media"
+            else:
+                severidad = "baja"
+
+            exceso_litros = max(0.0, real - pred)
+            exceso_co2 = round(exceso_litros * co2_factor, 2)
+            exceso_clp = round(exceso_litros * t.precio_litro_clp, 0)
+
+            total_exceso_litros += exceso_litros
+            total_exceso_clp += exceso_clp
+            total_exceso_co2 += exceso_co2
+
+            anomalias.append(AnomaliaFlota(
+                id_transaccion=t.id,
+                vehicle_id=t.vehicle_id,
+                vehicle_cat=t.vehicle_cat,
+                fecha=t.fecha.strftime("%Y-%m-%d"),
+                fuel_liters_real=round(real, 2),
+                fuel_liters_predicho=round(pred, 2),
+                desvio_pct=round(desvio_pct, 1),
+                severidad=severidad,  # type: ignore[arg-type]
+                co2_exceso_kg=exceso_co2,
+                precio_litro_clp=t.precio_litro_clp,
+                costo_exceso_clp=exceso_clp,
+                notas=t.notas,
+            ))
+
+    precision_promedio = precision_acum / len(transacciones) if transacciones else 0.0
+
+    # Construir series mensuales para el gráfico
+    consumo_por_periodo: list[ConsumoMensual] = []
+    for periodo_key in sorted(periodos.keys()):
+        p = periodos[periodo_key]
+        real_total = p["diesel_real"] + p["gasoil_real"]
+        pred_total = p["diesel_pred"] + p["gasoil_pred"]
+        desvio = ((real_total - pred_total) / pred_total * 100) if pred_total > 0 else 0.0
+        year, month = p["year"], p["month"]
+        label = f"{['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'][month-1]} {year}"
+        consumo_por_periodo.append(ConsumoMensual(
+            periodo=periodo_key,
+            year=year,
+            month=month,
+            label=label,
+            real_litros=round(real_total, 2),
+            predicho_litros=round(pred_total, 2),
+            desvio_pct=round(desvio, 1),
+            co2_real_kg=round(real_total * 2.5, 2),
+            co2_predicho_kg=round(pred_total * 2.5, 2),
+            diesel_real_l=round(p["diesel_real"], 2) if p["diesel_real"] > 0 else None,
+            gasoil_real_l=round(p["gasoil_real"], 2) if p["gasoil_real"] > 0 else None,
+            diesel_pred_l=round(p["diesel_pred"], 2) if p["diesel_pred"] > 0 else None,
+            gasoil_pred_l=round(p["gasoil_pred"], 2) if p["gasoil_pred"] > 0 else None,
+        ))
+
+    n_total = db.query(func.count(FuelTransaction.id)).scalar() or 0
+
+    return AnalisisFlotaResponse(
+        precision_promedio_pct=round(precision_promedio, 1),
+        total_registros_analizados=len(transacciones),
+        registros_con_desvio=len(anomalias),
+        ahorro_proyectado_litros=round(total_exceso_litros, 2),
+        ahorro_proyectado_clp=round(total_exceso_clp, 0),
+        reduccion_co2_proyectada_kg=round(total_exceso_co2, 2),
+        anomalias=sorted(anomalias, key=lambda a: a.desvio_pct, reverse=True),
+        consumo_por_periodo=consumo_por_periodo,
+        modelo_info={
+            "nombre": "Random Forest + litros_teoricos",
+            "error_relativo_pct": 6.13,
+            "registros_entrenamiento": 5795,
+            "registros_flota_analizados": len(transacciones),
+            "total_transacciones_sistema": n_total,
+        },
+    )
+
+
+@router.get("/consumo-mensual")
+def consumo_mensual(db: Session = Depends(get_db)) -> list[dict[str, Any]]:
+    """
+    Devuelve series mensuales real + predicho en el formato que acepta ConsumptionChart.
+    Permite integrar Diésel y Gas Oil en el gráfico multienergía de Predicciones ML.
+    """
+    model = _get_model()
+
+    transacciones = (
+        db.query(FuelTransaction)
+        .filter(FuelTransaction.fuel_liters_real.isnot(None))
+        .order_by(FuelTransaction.fecha)
+        .all()
+    )
+
+    periodos: dict[str, dict[str, Any]] = {}
+    for t in transacciones:
+        real = float(t.fuel_liters_real)  # type: ignore[arg-type]
+        pred = _predecir_litros(model, t.dist_km, t.km_per_liter, t.vehicle_cat, t.fuel_type)
+        key = t.fecha.strftime("%Y-%m")
+        if key not in periodos:
+            periodos[key] = {
+                "year": t.fecha.year, "month": t.fecha.month,
+                "diesel_real": 0.0, "gasoil_real": 0.0,
+                "diesel_pred": 0.0, "gasoil_pred": 0.0,
+            }
+        if t.fuel_type == "D":
+            periodos[key]["diesel_real"] += real
+            periodos[key]["diesel_pred"] += pred
+        else:
+            periodos[key]["gasoil_real"] += real
+            periodos[key]["gasoil_pred"] += pred
+
+    result: list[dict[str, Any]] = []
+    meses = ["Ene", "Feb", "Mar", "Abr", "May", "Jun", "Jul", "Ago", "Sep", "Oct", "Nov", "Dic"]
+    for key in sorted(periodos.keys()):
+        p = periodos[key]
+        result.append({
+            "year": p["year"],
+            "month": p["month"],
+            "label": f"{meses[p['month']-1]} {p['year']}",
+            "electricity_kwh": None,
+            "water_m3": None,
+            "predicted_electricity_kwh": None,
+            "predicted_water_m3": None,
+            "energy_values": {
+                "diesel_l":  round(p["diesel_real"], 2) if p["diesel_real"] > 0 else None,
+                "gasoil_l":  round(p["gasoil_real"], 2) if p["gasoil_real"] > 0 else None,
+            },
+            "energy_predictions": {
+                "diesel_l":  round(p["diesel_pred"], 2) if p["diesel_pred"] > 0 else None,
+                "gasoil_l":  round(p["gasoil_pred"], 2) if p["gasoil_pred"] > 0 else None,
+            },
+        })
+    return result
+
+
+@router.get("/transacciones", response_model=list[FuelTransactionResponse])
+def list_transacciones(
+    limit: int = 50,
+    db: Session = Depends(get_db),
+) -> list[FuelTransactionResponse]:
+    return (
+        db.query(FuelTransaction)
+        .order_by(FuelTransaction.fecha.desc())
+        .limit(limit)
+        .all()
+    )
+
+
+@router.post("/transacciones", response_model=FuelTransactionResponse, status_code=201)
+def create_transaccion(
+    payload: FuelTransactionCreate,
+    db: Session = Depends(get_db),
+) -> FuelTransactionResponse:
+    t = FuelTransaction(
+        vehicle_id=payload.vehicle_id,
+        vehicle_cat=payload.vehicle_cat,
+        fuel_type=payload.fuel_type,
+        fecha=payload.fecha.replace(tzinfo=timezone.utc) if payload.fecha.tzinfo is None else payload.fecha,
+        dist_km=payload.dist_km,
+        fuel_liters_real=payload.fuel_liters_real,
+        km_per_liter=payload.km_per_liter,
+        precio_litro_clp=payload.precio_litro_clp,
+        notas=payload.notas,
+    )
+    db.add(t)
+    db.commit()
+    db.refresh(t)
+    return t

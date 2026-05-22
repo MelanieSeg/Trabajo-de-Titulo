@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import datetime, timezone
 from pathlib import Path
 
 from sqlalchemy import inspect, select, text
@@ -15,6 +16,7 @@ from app.db.models import (
     ComplianceStandard,
     ETLSchedule,
     EfficiencyTarget,
+    FuelTransaction,
     LegalRequirement,
     MeasurementCertificate,
     MeterCalibration,
@@ -270,6 +272,71 @@ def seed_if_empty(db: Session) -> None:
         pass
 
 
+def _dt(y: int, m: int, d: int) -> datetime:
+    return datetime(y, m, d, 8, 0, 0, tzinfo=timezone.utc)
+
+
+def seed_fuel_transactions(db: Session) -> None:
+    """Carga transacciones de flota de demostración (idempotente)."""
+    if db.scalar(select(FuelTransaction.id).limit(1)):
+        return
+
+    registros = [
+        # BCK-4521 Van/Diesel — Jan-Mar normal, Abr-May anomalías (motor con fuga)
+        {"vid": "BCK-4521", "vcat": "Van",   "ft": "D", "dt": _dt(2026,1,8),  "dist": 400, "real": 34.0, "kpl": 13.0, "p": 1050, "n": None},
+        {"vid": "BCK-4521", "vcat": "Van",   "ft": "D", "dt": _dt(2026,1,20), "dist": 350, "real": 29.5, "kpl": 13.0, "p": 1050, "n": None},
+        {"vid": "BCK-4521", "vcat": "Van",   "ft": "D", "dt": _dt(2026,1,28), "dist": 450, "real": 38.5, "kpl": 13.0, "p": 1050, "n": None},
+        {"vid": "BCK-4521", "vcat": "Van",   "ft": "D", "dt": _dt(2026,2,5),  "dist": 380, "real": 31.5, "kpl": 13.0, "p": 1050, "n": None},
+        {"vid": "BCK-4521", "vcat": "Van",   "ft": "D", "dt": _dt(2026,2,18), "dist": 420, "real": 35.5, "kpl": 13.0, "p": 1050, "n": None},
+        {"vid": "BCK-4521", "vcat": "Van",   "ft": "D", "dt": _dt(2026,3,10), "dist": 400, "real": 33.0, "kpl": 13.0, "p": 1050, "n": None},
+        {"vid": "BCK-4521", "vcat": "Van",   "ft": "D", "dt": _dt(2026,3,25), "dist": 360, "real": 30.5, "kpl": 13.0, "p": 1050, "n": None},
+        {"vid": "BCK-4521", "vcat": "Van",   "ft": "D", "dt": _dt(2026,4,7),  "dist": 450, "real": 62.0, "kpl": 13.0, "p": 1050, "n": "Consumo elevado post-mantenimiento"},
+        {"vid": "BCK-4521", "vcat": "Van",   "ft": "D", "dt": _dt(2026,4,22), "dist": 380, "real": 53.5, "kpl": 13.0, "p": 1050, "n": "Consumo superior al predicho"},
+        {"vid": "BCK-4521", "vcat": "Van",   "ft": "D", "dt": _dt(2026,5,6),  "dist": 420, "real": 57.5, "kpl": 13.0, "p": 1050, "n": "Anomalía persistente — revisar motor"},
+        {"vid": "BCK-4521", "vcat": "Van",   "ft": "D", "dt": _dt(2026,5,19), "dist": 390, "real": 33.0, "kpl": 13.0, "p": 1050, "n": None},
+
+        # GHD-7832 Truck/Diesel — Jan-Mar normal, Abr-May anomalías (filtro obstruido)
+        {"vid": "GHD-7832", "vcat": "Truck", "ft": "D", "dt": _dt(2026,1,5),  "dist": 280, "real": 51.5, "kpl": 6.0,  "p": 1050, "n": None},
+        {"vid": "GHD-7832", "vcat": "Truck", "ft": "D", "dt": _dt(2026,1,22), "dist": 320, "real": 58.0, "kpl": 6.0,  "p": 1050, "n": None},
+        {"vid": "GHD-7832", "vcat": "Truck", "ft": "D", "dt": _dt(2026,2,11), "dist": 300, "real": 54.5, "kpl": 6.0,  "p": 1050, "n": None},
+        {"vid": "GHD-7832", "vcat": "Truck", "ft": "D", "dt": _dt(2026,2,24), "dist": 260, "real": 47.0, "kpl": 6.0,  "p": 1050, "n": None},
+        {"vid": "GHD-7832", "vcat": "Truck", "ft": "D", "dt": _dt(2026,3,8),  "dist": 350, "real": 63.0, "kpl": 6.0,  "p": 1050, "n": None},
+        {"vid": "GHD-7832", "vcat": "Truck", "ft": "D", "dt": _dt(2026,3,20), "dist": 290, "real": 52.5, "kpl": 6.0,  "p": 1050, "n": None},
+        {"vid": "GHD-7832", "vcat": "Truck", "ft": "D", "dt": _dt(2026,4,14), "dist": 300, "real": 95.0, "kpl": 6.0,  "p": 1050, "n": "Filtro obstruido — consumo 60% sobre predicción"},
+        {"vid": "GHD-7832", "vcat": "Truck", "ft": "D", "dt": _dt(2026,5,3),  "dist": 280, "real": 88.0, "kpl": 6.0,  "p": 1050, "n": "Anomalía persistente — requiere revisión mecánica"},
+        {"vid": "GHD-7832", "vcat": "Truck", "ft": "D", "dt": _dt(2026,5,17), "dist": 310, "real": 56.0, "kpl": 6.0,  "p": 1050, "n": None},
+
+        # MDW-2341 Bus/Gas Oil — Ene-Abr normal, Mayo anomalía (ruta extendida)
+        {"vid": "MDW-2341", "vcat": "Bus",   "ft": "G", "dt": _dt(2026,1,10), "dist": 200, "real": 42.0, "kpl": 5.0,  "p": 950,  "n": None},
+        {"vid": "MDW-2341", "vcat": "Bus",   "ft": "G", "dt": _dt(2026,1,25), "dist": 180, "real": 38.5, "kpl": 5.0,  "p": 950,  "n": None},
+        {"vid": "MDW-2341", "vcat": "Bus",   "ft": "G", "dt": _dt(2026,2,14), "dist": 210, "real": 44.5, "kpl": 5.0,  "p": 950,  "n": None},
+        {"vid": "MDW-2341", "vcat": "Bus",   "ft": "G", "dt": _dt(2026,3,9),  "dist": 195, "real": 41.0, "kpl": 5.0,  "p": 950,  "n": None},
+        {"vid": "MDW-2341", "vcat": "Bus",   "ft": "G", "dt": _dt(2026,3,23), "dist": 220, "real": 47.0, "kpl": 5.0,  "p": 950,  "n": None},
+        {"vid": "MDW-2341", "vcat": "Bus",   "ft": "G", "dt": _dt(2026,4,18), "dist": 200, "real": 41.5, "kpl": 5.0,  "p": 950,  "n": None},
+        {"vid": "MDW-2341", "vcat": "Bus",   "ft": "G", "dt": _dt(2026,5,12), "dist": 210, "real": 62.0, "kpl": 5.0,  "p": 950,  "n": "Consumo elevado — ruta modificada sin autorización"},
+
+        # NTY-9901 Car/Diesel — normal con una anomalía en Abril
+        {"vid": "NTY-9901", "vcat": "Car",   "ft": "D", "dt": _dt(2026,1,15), "dist": 280, "real": 20.0, "kpl": 15.0, "p": 1050, "n": None},
+        {"vid": "NTY-9901", "vcat": "Car",   "ft": "D", "dt": _dt(2026,2,9),  "dist": 300, "real": 21.5, "kpl": 15.0, "p": 1050, "n": None},
+        {"vid": "NTY-9901", "vcat": "Car",   "ft": "D", "dt": _dt(2026,3,17), "dist": 260, "real": 19.0, "kpl": 15.0, "p": 1050, "n": None},
+        {"vid": "NTY-9901", "vcat": "Car",   "ft": "D", "dt": _dt(2026,4,10), "dist": 290, "real": 42.0, "kpl": 15.0, "p": 1050, "n": "Consumo anómalo — posible uso no autorizado"},
+        {"vid": "NTY-9901", "vcat": "Car",   "ft": "D", "dt": _dt(2026,5,8),  "dist": 270, "real": 19.5, "kpl": 15.0, "p": 1050, "n": None},
+    ]
+
+    for r in registros:
+        db.add(FuelTransaction(
+            vehicle_id=r["vid"],
+            vehicle_cat=r["vcat"],
+            fuel_type=r["ft"],
+            fecha=r["dt"],
+            dist_km=r["dist"],
+            fuel_liters_real=r["real"],
+            km_per_liter=r["kpl"],
+            precio_litro_clp=r["p"],
+            notas=r["n"],
+        ))
+
+
 def bootstrap(db: Session) -> None:
     init_schema()
     run_compat_migrations(db)
@@ -277,5 +344,6 @@ def bootstrap(db: Session) -> None:
     seed_test_user(db)
     seed_if_empty(db)
     seed_resource_data(db)
+    seed_fuel_transactions(db)
     regenerate_anomaly_alerts(db)
     add_info_alert_if_empty(db)

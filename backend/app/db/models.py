@@ -454,6 +454,23 @@ class ResourceMonthlyConsumption(Base):
     )
 
 
+class FuelTransaction(Base):
+    """Registro real de operación de flota — consumo observado en terreno."""
+    __tablename__ = "fuel_transactions"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    vehicle_id: Mapped[str] = mapped_column(String(50), nullable=False, index=True)
+    vehicle_cat: Mapped[str] = mapped_column(String(20), nullable=False)
+    fuel_type: Mapped[str] = mapped_column(String(5), nullable=False)
+    fecha: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, index=True)
+    dist_km: Mapped[float] = mapped_column(Float, nullable=False)
+    fuel_liters_real: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    km_per_liter: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    precio_litro_clp: Mapped[float] = mapped_column(Float, nullable=False, default=1050.0)
+    notas: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+
 class FuelPredictionLog(Base):
     __tablename__ = "fuel_prediction_logs"
 

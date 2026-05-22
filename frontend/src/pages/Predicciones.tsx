@@ -1,19 +1,32 @@
-import { Brain, TrendingUp, AlertTriangle, CheckCircle, Loader2 } from "lucide-react";
+import { Brain, TrendingUp, AlertTriangle, CheckCircle, Loader2, Fuel, TriangleAlert, ArrowRight } from "lucide-react";
 import { DashboardLayout } from "@/components/DashboardLayout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { ConsumptionChart } from "@/components/ConsumptionChart";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { useOperationsOverview } from "@/hooks/useOperationsOverview";
-import { runMlTraining } from "@/lib/api";
+import { runMlTraining, getAnalisisFlota, getConsumoMensualFlota, type AnalisisFlotaResult } from "@/lib/api";
 import { useState } from "react";
-import { useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
+import { Link } from "react-router-dom";
 
 export default function Predicciones() {
   const { data, isLoading, isError } = useOperationsOverview();
   const [training, setTraining] = useState(false);
   const queryClient = useQueryClient();
+
+  const { data: flota } = useQuery<AnalisisFlotaResult>({
+    queryKey: ["analisis-flota"],
+    queryFn: getAnalisisFlota,
+    staleTime: 1000 * 60 * 5,
+  });
+
+  const { data: combustibleChart } = useQuery<Record<string, unknown>[]>({
+    queryKey: ["consumo-mensual-flota"],
+    queryFn: getConsumoMensualFlota,
+    staleTime: 1000 * 60 * 5,
+  });
 
   const chartData = data?.timeseries ?? [];
   const energyCatalog = data?.energy_catalog?.map((item) => ({
@@ -23,12 +36,17 @@ export default function Predicciones() {
   }));
   const recommendations = data?.predictions.recommendations ?? [];
 
+  const anomaliasAltas = flota?.anomalias.filter((a) => a.severidad === "alta").length ?? 0;
+  const anomaliasTotales = flota?.registros_con_desvio ?? 0;
+
   const retrainModel = async () => {
     try {
       setTraining(true);
       await runMlTraining(3);
       await queryClient.invalidateQueries({ queryKey: ["operations-overview"] });
       await queryClient.invalidateQueries({ queryKey: ["dashboard-data"] });
+      await queryClient.invalidateQueries({ queryKey: ["analisis-flota"] });
+      await queryClient.invalidateQueries({ queryKey: ["consumo-mensual-flota"] });
       toast.success("Modelo reentrenado con éxito");
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "No se pudo reentrenar el modelo");
@@ -37,9 +55,15 @@ export default function Predicciones() {
     }
   };
 
+  const fuelCatalog = [
+    { code: "diesel_l", label: "Diésel", unit: "L" },
+    { code: "gasoil_l", label: "Gas Oil", unit: "L" },
+  ];
+
   return (
     <DashboardLayout>
       <div className="space-y-6">
+        {/* ── Header ── */}
         <div className="flex items-center justify-between">
           <div>
             <h2 className="text-xl font-bold text-foreground">Predicciones ML</h2>
@@ -54,11 +78,12 @@ export default function Predicciones() {
         {isLoading && <Card className="p-4 text-sm text-muted-foreground">Cargando predicciones...</Card>}
         {isError && <Card className="p-4 text-sm text-destructive">No se pudieron cargar predicciones.</Card>}
 
+        {/* ── KPIs ── */}
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
           <Card>
             <CardContent className="p-4 text-center">
               <Brain className="h-8 w-8 mx-auto mb-2 text-primary" />
-              <p className="text-xs text-muted-foreground">Precisión Promedio</p>
+              <p className="text-xs text-muted-foreground">Precisión Promedio E/A</p>
               <p className="text-2xl font-bold">{(data?.predictions.accuracy_pct ?? 0).toFixed(1)}%</p>
               <p className="text-[11px] text-muted-foreground mt-1">
                 E: {(data?.predictions.accuracy_breakdown_pct?.electricity ?? 0).toFixed(1)}% · A:{" "}
@@ -81,15 +106,19 @@ export default function Predicciones() {
               <AlertTriangle className="h-8 w-8 mx-auto mb-2 text-yellow-500" />
               <p className="text-xs text-muted-foreground">Anomalías Activas</p>
               <p className="text-2xl font-bold">{data?.predictions.anomaly_count ?? 0}</p>
+              {anomaliasTotales > 0 && (
+                <p className="text-[11px] text-orange-500 mt-1">+{anomaliasTotales} en flota combustible</p>
+              )}
             </CardContent>
           </Card>
         </div>
 
+        {/* ── Modelos Campeones ── */}
         <Card>
           <CardHeader>
             <CardTitle className="text-base">Modelos Campeones</CardTitle>
           </CardHeader>
-          <CardContent className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <CardContent className="grid grid-cols-1 sm:grid-cols-3 gap-3">
             <div className="rounded-lg border p-3">
               <p className="text-xs text-muted-foreground">Electricidad</p>
               <p className="font-semibold">{data?.predictions.champion_models?.electricity ?? "N/D"}</p>
@@ -98,15 +127,103 @@ export default function Predicciones() {
               <p className="text-xs text-muted-foreground">Agua</p>
               <p className="font-semibold">{data?.predictions.champion_models?.water ?? "N/D"}</p>
             </div>
+            <div className="rounded-lg border border-orange-500/30 bg-orange-500/5 p-3">
+              <p className="text-xs text-muted-foreground flex items-center gap-1">
+                <Fuel className="h-3 w-3" /> Combustible / Flota
+              </p>
+              <p className="font-semibold text-sm">Random Forest + litros_teoricos</p>
+              <p className="text-[11px] text-muted-foreground mt-0.5">err.rel 6.13% · CRISP-DM Sprint 3</p>
+              {flota && (
+                <p className="text-[11px] text-orange-600 mt-1 font-medium">
+                  Precisión sobre flota real: {flota.precision_promedio_pct.toFixed(1)}%
+                </p>
+              )}
+            </div>
           </CardContent>
         </Card>
 
+        {/* ── Gráfico multienergía (agua + electricidad) ── */}
         <ConsumptionChart
           data={chartData}
           energyCatalog={energyCatalog}
           subtitle="Pronóstico multienergía con línea de predicción punteada"
         />
 
+        {/* ── Gráfico combustible (diésel + gas oil) ── */}
+        {combustibleChart && combustibleChart.length > 0 && (
+          <ConsumptionChart
+            data={combustibleChart as Parameters<typeof ConsumptionChart>[0]["data"]}
+            energyCatalog={fuelCatalog}
+            subtitle="Consumo real vs predicho de flota — Diésel y Gas Oil (L)"
+          />
+        )}
+
+        {/* ── KPIs de flota combustible ── */}
+        {flota && flota.total_registros_analizados > 0 && (
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            <Card>
+              <CardContent className="p-4 text-center">
+                <Fuel className="h-8 w-8 mx-auto mb-2 text-orange-500" />
+                <p className="text-xs text-muted-foreground">Precisión sobre datos reales de flota</p>
+                <p className="text-2xl font-bold">{flota.precision_promedio_pct.toFixed(1)}%</p>
+                <p className="text-[11px] text-muted-foreground mt-1">
+                  {flota.total_registros_analizados} transacciones analizadas
+                </p>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardContent className="p-4 text-center">
+                <TrendingUp className="h-8 w-8 mx-auto mb-2 text-green-500" />
+                <p className="text-xs text-muted-foreground">Ahorro potencial de combustible</p>
+                <p className="text-2xl font-bold">
+                  {flota.ahorro_proyectado_litros.toLocaleString("es-CL", { maximumFractionDigits: 0 })} L
+                </p>
+                <p className="text-[11px] text-muted-foreground mt-1">
+                  ${flota.ahorro_proyectado_clp.toLocaleString("es-CL")} CLP · {flota.reduccion_co2_proyectada_kg.toLocaleString("es-CL", { maximumFractionDigits: 0 })} kg CO₂
+                </p>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardContent className="p-4 text-center">
+                <TriangleAlert className={`h-8 w-8 mx-auto mb-2 ${anomaliasAltas > 0 ? "text-red-500" : "text-yellow-500"}`} />
+                <p className="text-xs text-muted-foreground">Vehículos con anomalía de consumo</p>
+                <p className="text-2xl font-bold">{flota.registros_con_desvio}</p>
+                <p className="text-[11px] text-muted-foreground mt-1">
+                  {anomaliasAltas} críticas · desvío &gt;10%
+                </p>
+              </CardContent>
+            </Card>
+          </div>
+        )}
+
+        {/* ── Anomalías de Flota — resumen con link a /anomalias ── */}
+        {flota && flota.anomalias.length > 0 && (
+          <Card className="border-orange-500/20">
+            <CardContent className="p-4 flex items-center justify-between gap-4">
+              <div className="flex items-center gap-3">
+                <TriangleAlert className="h-5 w-5 text-orange-500 shrink-0" />
+                <div>
+                  <p className="text-sm font-medium">
+                    {flota.anomalias.length} ineficiencias detectadas en flota
+                  </p>
+                  <p className="text-xs text-muted-foreground">
+                    {flota.anomalias.filter(a => a.severidad === "alta").length} alta ·{" "}
+                    {flota.anomalias.filter(a => a.severidad === "media").length} media ·{" "}
+                    {flota.anomalias.filter(a => a.severidad === "baja").length} baja —{" "}
+                    {flota.anomalias.reduce((s, a) => s + a.co2_exceso_kg, 0).toFixed(0)} kg CO₂ en exceso
+                  </p>
+                </div>
+              </div>
+              <Button variant="outline" size="sm" asChild>
+                <Link to="/anomalias">
+                  Ver detalle <ArrowRight className="h-3.5 w-3.5 ml-1.5" />
+                </Link>
+              </Button>
+            </CardContent>
+          </Card>
+        )}
+
+        {/* ── Recomendaciones (agua/electricidad) ── */}
         <Card>
           <CardHeader>
             <CardTitle className="text-base">Recomendaciones de Optimización</CardTitle>
@@ -123,6 +240,44 @@ export default function Predicciones() {
                 </Badge>
               </div>
             ))}
+
+            {/* Recomendaciones automáticas basadas en anomalías de flota */}
+            {flota && flota.registros_con_desvio > 0 && (() => {
+              const anomaliasTruck = flota.anomalias.filter(a => a.vehicle_cat === "Truck" && a.desvio_pct > 15);
+              const pctTruck = flota.anomalias.length > 0
+                ? (anomaliasTruck.length / flota.anomalias.length) * 100
+                : 0;
+              const excesoCo2Total = flota.anomalias.reduce((s, a) => s + a.co2_exceso_kg, 0);
+
+              return (
+                <>
+                  {pctTruck > 20 && (
+                    <div className="flex items-start gap-3 p-3 rounded-lg bg-red-500/5 border border-red-500/20">
+                      <AlertTriangle className="h-5 w-5 text-red-500 shrink-0 mt-0.5" />
+                      <div className="flex-1">
+                        <p className="text-sm">
+                          Revisar estado mecánico de flota pesada — el {pctTruck.toFixed(0)}% de los camiones
+                          tiene consumo que supera en más del 15% la predicción del modelo.
+                        </p>
+                      </div>
+                      <Badge variant="destructive">Alta</Badge>
+                    </div>
+                  )}
+                  {excesoCo2Total > 100 && (
+                    <div className="flex items-start gap-3 p-3 rounded-lg bg-orange-500/5 border border-orange-500/20">
+                      <AlertTriangle className="h-5 w-5 text-orange-500 shrink-0 mt-0.5" />
+                      <div className="flex-1">
+                        <p className="text-sm">
+                          Exceso de emisiones Scope 1 detectado ({excesoCo2Total.toFixed(0)} kg CO₂) —
+                          se recomienda revisión del plan de mantenimiento preventivo antes del próximo reporte RETC.
+                        </p>
+                      </div>
+                      <Badge variant="secondary" className="bg-orange-100 text-orange-800">Media</Badge>
+                    </div>
+                  )}
+                </>
+              );
+            })()}
           </CardContent>
         </Card>
       </div>
