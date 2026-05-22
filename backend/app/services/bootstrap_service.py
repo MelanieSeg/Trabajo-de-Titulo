@@ -277,64 +277,125 @@ def _dt(y: int, m: int, d: int) -> datetime:
 
 
 def seed_fuel_transactions(db: Session) -> None:
-    """Carga transacciones de flota de demostración (idempotente)."""
+    """
+    Carga transacciones de flota de demostración (idempotente).
+    Cubre 17 meses (Ene 2025 – May 2026) con 5 vehículos.
+    Viajes normales: 4-5% sobre litros teóricos (bajo umbral del 10%).
+    Anomalías en Abr-May 2026: 50-120% sobre teórico (severidad alta).
+    Total: 170 registros, todos con fuel_liters_real.
+    """
     if db.scalar(select(FuelTransaction.id).limit(1)):
         return
 
-    registros = [
-        # BCK-4521 Van/Diesel — Jan-Mar normal, Abr-May anomalías (motor con fuga)
-        {"vid": "BCK-4521", "vcat": "Van",   "ft": "D", "dt": _dt(2026,1,8),  "dist": 400, "real": 34.0, "kpl": 13.0, "p": 1050, "n": None},
-        {"vid": "BCK-4521", "vcat": "Van",   "ft": "D", "dt": _dt(2026,1,20), "dist": 350, "real": 29.5, "kpl": 13.0, "p": 1050, "n": None},
-        {"vid": "BCK-4521", "vcat": "Van",   "ft": "D", "dt": _dt(2026,1,28), "dist": 450, "real": 38.5, "kpl": 13.0, "p": 1050, "n": None},
-        {"vid": "BCK-4521", "vcat": "Van",   "ft": "D", "dt": _dt(2026,2,5),  "dist": 380, "real": 31.5, "kpl": 13.0, "p": 1050, "n": None},
-        {"vid": "BCK-4521", "vcat": "Van",   "ft": "D", "dt": _dt(2026,2,18), "dist": 420, "real": 35.5, "kpl": 13.0, "p": 1050, "n": None},
-        {"vid": "BCK-4521", "vcat": "Van",   "ft": "D", "dt": _dt(2026,3,10), "dist": 400, "real": 33.0, "kpl": 13.0, "p": 1050, "n": None},
-        {"vid": "BCK-4521", "vcat": "Van",   "ft": "D", "dt": _dt(2026,3,25), "dist": 360, "real": 30.5, "kpl": 13.0, "p": 1050, "n": None},
-        {"vid": "BCK-4521", "vcat": "Van",   "ft": "D", "dt": _dt(2026,4,7),  "dist": 450, "real": 62.0, "kpl": 13.0, "p": 1050, "n": "Consumo elevado post-mantenimiento"},
-        {"vid": "BCK-4521", "vcat": "Van",   "ft": "D", "dt": _dt(2026,4,22), "dist": 380, "real": 53.5, "kpl": 13.0, "p": 1050, "n": "Consumo superior al predicho"},
-        {"vid": "BCK-4521", "vcat": "Van",   "ft": "D", "dt": _dt(2026,5,6),  "dist": 420, "real": 57.5, "kpl": 13.0, "p": 1050, "n": "Anomalía persistente — revisar motor"},
-        {"vid": "BCK-4521", "vcat": "Van",   "ft": "D", "dt": _dt(2026,5,19), "dist": 390, "real": 33.0, "kpl": 13.0, "p": 1050, "n": None},
+    def _tx(
+        vid: str, vcat: str, ft: str,
+        year: int, month: int, day: int,
+        dist: int, kpl: float, precio: int,
+        real: float, notas: str | None = None,
+    ) -> FuelTransaction:
+        return FuelTransaction(
+            vehicle_id=vid, vehicle_cat=vcat, fuel_type=ft,
+            fecha=_dt(year, month, day),
+            dist_km=float(dist), fuel_liters_real=real,
+            km_per_liter=kpl, precio_litro_clp=float(precio),
+            notas=notas,
+        )
 
-        # GHD-7832 Truck/Diesel — Jan-Mar normal, Abr-May anomalías (filtro obstruido)
-        {"vid": "GHD-7832", "vcat": "Truck", "ft": "D", "dt": _dt(2026,1,5),  "dist": 280, "real": 51.5, "kpl": 6.0,  "p": 1050, "n": None},
-        {"vid": "GHD-7832", "vcat": "Truck", "ft": "D", "dt": _dt(2026,1,22), "dist": 320, "real": 58.0, "kpl": 6.0,  "p": 1050, "n": None},
-        {"vid": "GHD-7832", "vcat": "Truck", "ft": "D", "dt": _dt(2026,2,11), "dist": 300, "real": 54.5, "kpl": 6.0,  "p": 1050, "n": None},
-        {"vid": "GHD-7832", "vcat": "Truck", "ft": "D", "dt": _dt(2026,2,24), "dist": 260, "real": 47.0, "kpl": 6.0,  "p": 1050, "n": None},
-        {"vid": "GHD-7832", "vcat": "Truck", "ft": "D", "dt": _dt(2026,3,8),  "dist": 350, "real": 63.0, "kpl": 6.0,  "p": 1050, "n": None},
-        {"vid": "GHD-7832", "vcat": "Truck", "ft": "D", "dt": _dt(2026,3,20), "dist": 290, "real": 52.5, "kpl": 6.0,  "p": 1050, "n": None},
-        {"vid": "GHD-7832", "vcat": "Truck", "ft": "D", "dt": _dt(2026,4,14), "dist": 300, "real": 95.0, "kpl": 6.0,  "p": 1050, "n": "Filtro obstruido — consumo 60% sobre predicción"},
-        {"vid": "GHD-7832", "vcat": "Truck", "ft": "D", "dt": _dt(2026,5,3),  "dist": 280, "real": 88.0, "kpl": 6.0,  "p": 1050, "n": "Anomalía persistente — requiere revisión mecánica"},
-        {"vid": "GHD-7832", "vcat": "Truck", "ft": "D", "dt": _dt(2026,5,17), "dist": 310, "real": 56.0, "kpl": 6.0,  "p": 1050, "n": None},
+    def _n(dist: int, kpl: float, pct: float = 0.05) -> float:
+        """Consumo normal: pct% sobre litros teóricos (dist/kpl)."""
+        return round((dist / kpl) * (1.0 + pct), 1)
 
-        # MDW-2341 Bus/Gas Oil — Ene-Abr normal, Mayo anomalía (ruta extendida)
-        {"vid": "MDW-2341", "vcat": "Bus",   "ft": "G", "dt": _dt(2026,1,10), "dist": 200, "real": 42.0, "kpl": 5.0,  "p": 950,  "n": None},
-        {"vid": "MDW-2341", "vcat": "Bus",   "ft": "G", "dt": _dt(2026,1,25), "dist": 180, "real": 38.5, "kpl": 5.0,  "p": 950,  "n": None},
-        {"vid": "MDW-2341", "vcat": "Bus",   "ft": "G", "dt": _dt(2026,2,14), "dist": 210, "real": 44.5, "kpl": 5.0,  "p": 950,  "n": None},
-        {"vid": "MDW-2341", "vcat": "Bus",   "ft": "G", "dt": _dt(2026,3,9),  "dist": 195, "real": 41.0, "kpl": 5.0,  "p": 950,  "n": None},
-        {"vid": "MDW-2341", "vcat": "Bus",   "ft": "G", "dt": _dt(2026,3,23), "dist": 220, "real": 47.0, "kpl": 5.0,  "p": 950,  "n": None},
-        {"vid": "MDW-2341", "vcat": "Bus",   "ft": "G", "dt": _dt(2026,4,18), "dist": 200, "real": 41.5, "kpl": 5.0,  "p": 950,  "n": None},
-        {"vid": "MDW-2341", "vcat": "Bus",   "ft": "G", "dt": _dt(2026,5,12), "dist": 210, "real": 62.0, "kpl": 5.0,  "p": 950,  "n": "Consumo elevado — ruta modificada sin autorización"},
+    txs: list[FuelTransaction] = []
 
-        # NTY-9901 Car/Diesel — normal con una anomalía en Abril
-        {"vid": "NTY-9901", "vcat": "Car",   "ft": "D", "dt": _dt(2026,1,15), "dist": 280, "real": 20.0, "kpl": 15.0, "p": 1050, "n": None},
-        {"vid": "NTY-9901", "vcat": "Car",   "ft": "D", "dt": _dt(2026,2,9),  "dist": 300, "real": 21.5, "kpl": 15.0, "p": 1050, "n": None},
-        {"vid": "NTY-9901", "vcat": "Car",   "ft": "D", "dt": _dt(2026,3,17), "dist": 260, "real": 19.0, "kpl": 15.0, "p": 1050, "n": None},
-        {"vid": "NTY-9901", "vcat": "Car",   "ft": "D", "dt": _dt(2026,4,10), "dist": 290, "real": 42.0, "kpl": 15.0, "p": 1050, "n": "Consumo anómalo — posible uso no autorizado"},
-        {"vid": "NTY-9901", "vcat": "Car",   "ft": "D", "dt": _dt(2026,5,8),  "dist": 270, "real": 19.5, "kpl": 15.0, "p": 1050, "n": None},
+    # ── HISTÓRICO NORMAL: Ene 2025 – Mar 2026  (15 meses × 5 vehículos × 2 viajes = 150) ─
+    #
+    # Flota:
+    #   BCK-4521  Van/Diésel   kpl=13.0  reparto urbano          distancias 360-440 km
+    #   GHD-7832  Truck/Diésel kpl=6.0   distribución pesada     distancias 260-340 km
+    #   MDW-2341  Bus/Gas Oil  kpl=5.0   transporte de personal  distancias 180-220 km
+    #   NTY-9901  Car/Diésel   kpl=15.0  vehículo ejecutivo      distancias 250-300 km
+    #   PLX-6634  Van/Diésel   kpl=11.5  reparto carga media     distancias 290-380 km
+
+    for year, month in [(2025, m) for m in range(1, 13)] + [(2026, m) for m in range(1, 4)]:
+        odd = month % 2  # alterna distancias para dar variedad mensual
+
+        # BCK-4521
+        da, db2 = (380, 420) if odd else (360, 440)
+        txs += [
+            _tx("BCK-4521", "Van",   "D", year, month,  8, da,  13.0, 1050, _n(da,  13.0, 0.05)),
+            _tx("BCK-4521", "Van",   "D", year, month, 22, db2, 13.0, 1050, _n(db2, 13.0, 0.04)),
+        ]
+
+        # GHD-7832
+        da, db2 = (280, 320) if odd else (260, 340)
+        txs += [
+            _tx("GHD-7832", "Truck", "D", year, month,  7, da,  6.0,  1050, _n(da,  6.0,  0.05)),
+            _tx("GHD-7832", "Truck", "D", year, month, 21, db2, 6.0,  1050, _n(db2, 6.0,  0.04)),
+        ]
+
+        # MDW-2341
+        da, db2 = (190, 210) if odd else (180, 220)
+        txs += [
+            _tx("MDW-2341", "Bus",   "G", year, month, 10, da,  5.0,  950,  _n(da,  5.0,  0.04)),
+            _tx("MDW-2341", "Bus",   "G", year, month, 24, db2, 5.0,  950,  _n(db2, 5.0,  0.05)),
+        ]
+
+        # NTY-9901
+        da, db2 = (260, 300) if odd else (250, 290)
+        txs += [
+            _tx("NTY-9901", "Car",   "D", year, month,  9, da,  15.0, 1050, _n(da,  15.0, 0.05)),
+            _tx("NTY-9901", "Car",   "D", year, month, 23, db2, 15.0, 1050, _n(db2, 15.0, 0.04)),
+        ]
+
+        # PLX-6634
+        da, db2 = (310, 360) if odd else (290, 380)
+        txs += [
+            _tx("PLX-6634", "Van",   "D", year, month, 11, da,  11.5, 1050, _n(da,  11.5, 0.05)),
+            _tx("PLX-6634", "Van",   "D", year, month, 25, db2, 11.5, 1050, _n(db2, 11.5, 0.04)),
+        ]
+
+    # ── ABR 2026: inicio de anomalías ──────────────────────────────────────────────────────
+    # Desviaciones calculadas sobre litros_teoricos = dist/kpl:
+    #   BCK-4521: 400/13=30.8 L  →  62 L  (+101%)  severidad "alta"
+    #   GHD-7832: 300/6 =50.0 L  →  95 L  (+90%)   severidad "alta"
+    #   MDW-2341: normal en abril
+    #   NTY-9901: 290/15=19.3 L  →  42 L  (+117%)  severidad "alta"
+    #   PLX-6634: normal en abril
+
+    txs += [
+        _tx("BCK-4521","Van",  "D",2026,4, 7,400,13.0,1050, 62.0, "Consumo elevado — posible fuga en inyector"),
+        _tx("BCK-4521","Van",  "D",2026,4,21,360,13.0,1050, 56.5, "Consumo superior al predicho — revisar motor"),
+        _tx("GHD-7832","Truck","D",2026,4,14,300, 6.0,1050, 95.0, "Filtro obstruido — consumo 90% sobre predicción"),
+        _tx("GHD-7832","Truck","D",2026,4,28,280, 6.0,1050, 88.0, "Anomalía persistente — requiere revisión mecánica"),
+        _tx("MDW-2341","Bus",  "G",2026,4,10,200, 5.0, 950, _n(200,5.0,0.04)),
+        _tx("MDW-2341","Bus",  "G",2026,4,24,210, 5.0, 950, _n(210,5.0,0.05)),
+        _tx("NTY-9901","Car",  "D",2026,4, 9,290,15.0,1050, 42.0, "Consumo anómalo — posible uso no autorizado"),
+        _tx("NTY-9901","Car",  "D",2026,4,23,270,15.0,1050, _n(270,15.0,0.05)),
+        _tx("PLX-6634","Van",  "D",2026,4,11,340,11.5,1050, _n(340,11.5,0.05)),
+        _tx("PLX-6634","Van",  "D",2026,4,25,310,11.5,1050, _n(310,11.5,0.04)),
     ]
 
-    for r in registros:
-        db.add(FuelTransaction(
-            vehicle_id=r["vid"],
-            vehicle_cat=r["vcat"],
-            fuel_type=r["ft"],
-            fecha=r["dt"],
-            dist_km=r["dist"],
-            fuel_liters_real=r["real"],
-            km_per_liter=r["kpl"],
-            precio_litro_clp=r["p"],
-            notas=r["n"],
-        ))
+    # ── MAY 2026: anomalías persistentes + recuperaciones ─────────────────────────────────
+    # BCK-4521 persiste en anomalía, segundo viaje ya corregido
+    # GHD-7832 persiste en anomalía, segundo viaje ya corregido
+    # MDW-2341 ruta extendida en primer viaje (47% desvío = severidad "alta")
+    # NTY-9901 recuperado; PLX-6634 normal
+
+    txs += [
+        _tx("BCK-4521","Van",  "D",2026,5,12,420,13.0,1050, 64.0, "Anomalía persistente — inyector sin reparar"),
+        _tx("BCK-4521","Van",  "D",2026,5,26,380,13.0,1050, _n(380,13.0,0.05), "Recuperado tras mantenimiento correctivo"),
+        _tx("GHD-7832","Truck","D",2026,5, 3,280, 6.0,1050, 88.0, "Anomalía persistente — filtro sin reemplazar"),
+        _tx("GHD-7832","Truck","D",2026,5,19,310, 6.0,1050, _n(310,6.0,0.05)),
+        _tx("MDW-2341","Bus",  "G",2026,5,12,210, 5.0, 950, 62.0, "Consumo elevado — ruta modificada sin autorización"),
+        _tx("MDW-2341","Bus",  "G",2026,5,26,190, 5.0, 950, _n(190,5.0,0.04)),
+        _tx("NTY-9901","Car",  "D",2026,5, 8,270,15.0,1050, _n(270,15.0,0.05)),
+        _tx("NTY-9901","Car",  "D",2026,5,22,260,15.0,1050, _n(260,15.0,0.04)),
+        _tx("PLX-6634","Van",  "D",2026,5,11,320,11.5,1050, _n(320,11.5,0.05)),
+        _tx("PLX-6634","Van",  "D",2026,5,25,350,11.5,1050, _n(350,11.5,0.04)),
+    ]
+
+    for t in txs:
+        db.add(t)
 
 
 def bootstrap(db: Session) -> None:

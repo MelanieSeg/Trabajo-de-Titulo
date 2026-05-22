@@ -1248,3 +1248,26 @@ export async function exportRetcCsv(anio?: number): Promise<Blob> {
     : "/combustible-ml/exportar-retc";
   return exportBlob(path);
 }
+
+export interface ModeloEstado {
+  trained_with_company_data: boolean;
+  uses_year: boolean;
+  n_empresa: number | null;
+  n_base: number | null;
+  error_relativo_empresa_pct: number | null;
+  mae_empresa_L: number | null;
+  retrained_at: string | null;
+  n_transacciones_disponibles: number;
+  puede_reentrenar: boolean;
+  min_registros_requeridos: number;
+}
+
+export function getModeloEstado(): Promise<ModeloEstado> {
+  return request<ModeloEstado>("/combustible-ml/modelo-estado");
+}
+
+export function reentrenarCombustible(): Promise<Record<string, unknown>> {
+  return request<Record<string, unknown>>("/combustible-ml/reentrenar", {
+    method: "POST",
+  });
+}

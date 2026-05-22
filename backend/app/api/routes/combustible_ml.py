@@ -1,8 +1,10 @@
 """
 Módulo de IA para gestión de combustible de flota.
 Detección automática de ineficiencias operativas, trazabilidad y reporte RETC.
+Incluye reentrenamiento del modelo con datos reales de la empresa.
 """
 
+import json
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Literal, Optional
@@ -12,24 +14,44 @@ import numpy as np
 import pandas as pd
 from fastapi import APIRouter, Depends, HTTPException, Response
 from pydantic import BaseModel, Field
+from sklearn.compose import ColumnTransformer
+from sklearn.ensemble import RandomForestRegressor
+from sklearn.impute import SimpleImputer
+from sklearn.pipeline import Pipeline
+from sklearn.preprocessing import OrdinalEncoder
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
-from app.api.deps import get_db
-from app.db.models import FuelPredictionLog, FuelTransaction
+from app.api.deps import get_db, require_admin
+from app.db.models import FuelPredictionLog, FuelTransaction, User
 
 router = APIRouter(prefix="/combustible-ml", tags=["combustible-ml"])
 
-_MODEL_PATH = Path(__file__).parent.parent.parent.parent / "data" / "modelo_combustible.joblib"
+_DATA_DIR       = Path(__file__).parent.parent.parent.parent / "data"
+_MODEL_PATH     = _DATA_DIR / "modelo_combustible.joblib"
+_MODEL_META_PATH= _DATA_DIR / "modelo_combustible_meta.json"
+_BASE_CSV_PATH  = _DATA_DIR / "fleet_fuel_base.csv"
+
 _CO2_FACTOR: dict[str, float] = {"D": 2.68, "G": 1.89}
 _MEJORA_EFICIENCIA_PCT = 10.0
-_UMBRAL_ANOMALIA_PCT = 10.0
+_UMBRAL_ANOMALIA_PCT   = 10.0
+_MIN_REGISTROS_REENTRENAMIENTO = 30
 
-_model = None
+_model      = None
+_model_meta: dict = {}
+
+
+def _load_model_meta() -> dict:
+    """Lee el JSON de metadatos del modelo (si existe)."""
+    if _MODEL_META_PATH.exists():
+        with open(_MODEL_META_PATH, encoding="utf-8") as f:
+            return json.load(f)
+    # Metadatos por defecto: modelo genérico original (usa year)
+    return {"uses_year": True, "trained_with_company_data": False}
 
 
 def _get_model():
-    global _model
+    global _model, _model_meta
     if _model is None:
         if not _MODEL_PATH.exists():
             raise HTTPException(
@@ -37,6 +59,7 @@ def _get_model():
                 detail="Modelo de combustible no disponible. Coloque modelo_combustible.joblib en backend/data/",
             )
         _model = joblib.load(_MODEL_PATH)
+        _model_meta = _load_model_meta()
     return _model
 
 
@@ -47,16 +70,33 @@ def _predecir_litros(
     vehicle_cat: str,
     fuel_type: str,
 ) -> float:
+    """
+    Predice litros consumidos. Si el modelo fue reentrenado con datos de empresa,
+    no usa el feature 'year' (que era específico del dataset de entrenamiento original).
+    """
     kpl = km_per_liter if km_per_liter is not None else np.nan
     litros_teo = dist_km / kpl if km_per_liter is not None else np.nan
-    features = pd.DataFrame([{
-        "dist_km":         dist_km,
-        "km_per_liter":    kpl,
-        "litros_teoricos": litros_teo,
-        "vehicle_cat":     vehicle_cat,
-        "fuel_type":       fuel_type,
-        "year":            "2018-19",
-    }])
+
+    if _model_meta.get("uses_year", True):
+        # Modelo genérico original — necesita el feature year
+        features = pd.DataFrame([{
+            "dist_km":         dist_km,
+            "km_per_liter":    kpl,
+            "litros_teoricos": litros_teo,
+            "vehicle_cat":     vehicle_cat,
+            "fuel_type":       fuel_type,
+            "year":            "2018-19",
+        }])
+    else:
+        # Modelo adaptado a la empresa — sin year
+        features = pd.DataFrame([{
+            "dist_km":         dist_km,
+            "km_per_liter":    kpl,
+            "litros_teoricos": litros_teo,
+            "vehicle_cat":     vehicle_cat,
+            "fuel_type":       fuel_type,
+        }])
+
     log_pred = float(model.predict(features)[0])
     return max(float(np.expm1(log_pred)), 0.0)
 
@@ -603,3 +643,178 @@ def create_transaccion(
     db.commit()
     db.refresh(t)
     return t
+
+
+# ── Schema para estado del modelo ─────────────────────────────────────────────
+
+class ModeloEstadoResponse(BaseModel):
+    trained_with_company_data: bool
+    uses_year: bool
+    n_empresa: Optional[int] = None
+    n_base: Optional[int] = None
+    error_relativo_empresa_pct: Optional[float] = None
+    mae_empresa_L: Optional[float] = None
+    retrained_at: Optional[str] = None
+    n_transacciones_disponibles: int
+    puede_reentrenar: bool
+    min_registros_requeridos: int
+
+
+@router.get("/modelo-estado", response_model=ModeloEstadoResponse)
+def modelo_estado(db: Session = Depends(get_db)) -> ModeloEstadoResponse:
+    """Devuelve el estado actual del modelo: si fue adaptado a la empresa o es el genérico."""
+    meta = _load_model_meta()
+    n_disponibles = db.query(func.count(FuelTransaction.id)).filter(
+        FuelTransaction.fuel_liters_real.isnot(None)
+    ).scalar() or 0
+    return ModeloEstadoResponse(
+        trained_with_company_data=meta.get("trained_with_company_data", False),
+        uses_year=meta.get("uses_year", True),
+        n_empresa=meta.get("n_empresa"),
+        n_base=meta.get("n_base"),
+        error_relativo_empresa_pct=meta.get("error_relativo_empresa_pct"),
+        mae_empresa_L=meta.get("mae_empresa_L"),
+        retrained_at=meta.get("retrained_at"),
+        n_transacciones_disponibles=n_disponibles,
+        puede_reentrenar=n_disponibles >= _MIN_REGISTROS_REENTRENAMIENTO,
+        min_registros_requeridos=_MIN_REGISTROS_REENTRENAMIENTO,
+    )
+
+
+@router.post("/reentrenar")
+def reentrenar_modelo(
+    db: Session = Depends(get_db),
+    _admin: User = Depends(require_admin),
+) -> dict[str, Any]:
+    """
+    Reentrena el Random Forest combinando el dataset base externo (5.795 registros de
+    referencia sobre física del consumo de combustible) con las transacciones reales
+    registradas en el sistema por la empresa.
+
+    El nuevo modelo NO usa el feature 'year' (que era específico del dataset original UK),
+    lo que lo hace aplicable a cualquier año de operación.
+
+    Los datos de la empresa reciben peso triple para que el modelo se adapte a la flota
+    y rutas específicas, sin perder el conocimiento base del dataset de referencia.
+
+    Requiere al menos 30 transacciones con fuel_liters_real.
+    Solo accesible para administradores.
+    """
+    global _model, _model_meta
+
+    # 1. Verificar dataset base
+    if not _BASE_CSV_PATH.exists():
+        raise HTTPException(
+            status_code=503,
+            detail="Dataset base no disponible (fleet_fuel_base.csv). Contacte al administrador.",
+        )
+
+    # 2. Verificar transacciones de empresa
+    transacciones = (
+        db.query(FuelTransaction)
+        .filter(FuelTransaction.fuel_liters_real.isnot(None))
+        .all()
+    )
+    n_empresa = len(transacciones)
+
+    if n_empresa < _MIN_REGISTROS_REENTRENAMIENTO:
+        return {
+            "success": False,
+            "message": (
+                f"Se necesitan al menos {_MIN_REGISTROS_REENTRENAMIENTO} transacciones "
+                f"con consumo real registrado. Actualmente hay {n_empresa}."
+            ),
+            "n_empresa": n_empresa,
+            "n_requeridas": _MIN_REGISTROS_REENTRENAMIENTO,
+        }
+
+    # 3. Cargar y preparar dataset base (sin columna year)
+    df_base = pd.read_csv(_BASE_CSV_PATH)
+    df_base["log_fuel"] = np.log1p(df_base["fuel_liters"])
+    if "litros_teoricos" not in df_base.columns:
+        df_base["litros_teoricos"] = df_base["dist_km"] / df_base["km_per_liter"]
+
+    FEATURES_NUM = ["dist_km", "km_per_liter", "litros_teoricos"]
+    FEATURES_CAT = ["vehicle_cat", "fuel_type"]
+    FEATURES     = FEATURES_NUM + FEATURES_CAT
+
+    df_base_clean = df_base[FEATURES + ["log_fuel"]].copy()
+
+    # 4. Preparar features de empresa
+    rows = []
+    for t in transacciones:
+        kpl       = float(t.km_per_liter) if t.km_per_liter else np.nan
+        litros_teo = float(t.dist_km) / kpl if t.km_per_liter else np.nan
+        rows.append({
+            "dist_km":         float(t.dist_km),
+            "km_per_liter":    kpl,
+            "litros_teoricos": litros_teo,
+            "vehicle_cat":     t.vehicle_cat,
+            "fuel_type":       t.fuel_type,
+            "log_fuel":        np.log1p(float(t.fuel_liters_real)),
+        })
+    df_empresa = pd.DataFrame(rows)
+
+    # 5. Combinar: base + empresa × 3 (peso triple a datos propios de la empresa)
+    df_combinado = pd.concat(
+        [df_base_clean, pd.concat([df_empresa] * 3, ignore_index=True)],
+        ignore_index=True,
+    )
+
+    # 6. Construir y entrenar pipeline sin year
+    preprocesador = ColumnTransformer(
+        transformers=[
+            ("num", SimpleImputer(strategy="median"), FEATURES_NUM),
+            ("cat", OrdinalEncoder(
+                handle_unknown="use_encoded_value", unknown_value=-1
+            ), FEATURES_CAT),
+        ],
+        remainder="drop",
+    )
+    pipeline = Pipeline([
+        ("prep", preprocesador),
+        ("mod",  RandomForestRegressor(
+            n_estimators=200, max_depth=15, min_samples_leaf=5,
+            max_features="sqrt", n_jobs=-1, random_state=42,
+        )),
+    ])
+
+    X = df_combinado[FEATURES]
+    y = df_combinado["log_fuel"]
+    pipeline.fit(X, y)
+
+    # 7. Evaluar sobre transacciones reales de empresa (error relativo)
+    y_pred_log = pipeline.predict(df_empresa[FEATURES])
+    y_pred     = np.expm1(y_pred_log)
+    y_real     = np.expm1(df_empresa["log_fuel"].values)
+    mae        = float(np.mean(np.abs(y_real - y_pred)))
+    error_rel  = float(mae / y_real.mean() * 100) if y_real.mean() > 0 else 0.0
+
+    # 8. Guardar modelo y metadatos
+    joblib.dump(pipeline, _MODEL_PATH)
+    meta = {
+        "uses_year":                   False,
+        "trained_with_company_data":   True,
+        "n_base":                      len(df_base),
+        "n_empresa":                   n_empresa,
+        "n_total_entrenamiento":       len(df_combinado),
+        "error_relativo_empresa_pct":  round(error_rel, 2),
+        "mae_empresa_L":               round(mae, 1),
+        "retrained_at":                datetime.now(timezone.utc).isoformat(),
+    }
+    with open(_MODEL_META_PATH, "w", encoding="utf-8") as f:
+        json.dump(meta, f, indent=2)
+
+    # 9. Recargar en memoria
+    _model      = pipeline
+    _model_meta = meta
+
+    return {
+        "success": True,
+        "message": (
+            f"Modelo reentrenado exitosamente con {n_empresa} transacciones de la empresa "
+            f"+ {len(df_base)} registros base. "
+            f"Error relativo sobre datos propios: {error_rel:.1f}%."
+        ),
+        **meta,
+    }

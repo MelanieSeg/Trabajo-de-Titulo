@@ -1,7 +1,8 @@
 import { useState, useEffect, useCallback } from "react";
 import {
   Brain, Fuel, Loader2, AlertTriangle, CheckCircle,
-  Info, TrendingDown, DollarSign, Leaf, TriangleAlert, History, PlusCircle, ClipboardList,
+  Info, TrendingDown, DollarSign, Leaf, TriangleAlert, History, PlusCircle,
+  ClipboardList, RefreshCw, ShieldCheck, Globe,
 } from "lucide-react";
 import { DashboardLayout } from "@/components/DashboardLayout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -14,8 +15,9 @@ import { toast } from "sonner";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   predictFuelConsumption, getFuelHistorial, createFuelTransaccion, getFuelTransacciones,
+  getModeloEstado, reentrenarCombustible,
   type FuelPredictionRequest, type FuelPredictionResponse, type FuelPredictionLogItem,
-  type FuelTransactionCreate, type FuelTransactionItem,
+  type FuelTransactionCreate, type FuelTransactionItem, type ModeloEstado,
 } from "@/lib/api";
 
 const VEHICLE_LABELS: Record<FuelPredictionRequest["vehicle_cat"], string> = {
@@ -104,6 +106,33 @@ export default function PrediccionesCombustible() {
     queryFn: () => getFuelTransacciones(50),
     staleTime: 1000 * 60 * 2,
   });
+
+  const { data: modeloEstado, refetch: refetchEstado } = useQuery<ModeloEstado>({
+    queryKey: ["combustible-modelo-estado"],
+    queryFn: getModeloEstado,
+    staleTime: 1000 * 60 * 5,
+  });
+
+  const [retraining, setRetraining] = useState(false);
+
+  async function handleReentrenar() {
+    setRetraining(true);
+    try {
+      const res = await reentrenarCombustible();
+      if (res.success) {
+        toast.success("Modelo adaptado exitosamente a los datos de la empresa");
+        refetchEstado();
+        await queryClient.invalidateQueries({ queryKey: ["analisis-flota"] });
+        await queryClient.invalidateQueries({ queryKey: ["consumo-mensual-flota"] });
+      } else {
+        toast.warning(String(res.message ?? "No se pudo reentrenar el modelo"));
+      }
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Error al reentrenar el modelo");
+    } finally {
+      setRetraining(false);
+    }
+  }
 
   const HIST_PAGE_SIZE = 10;
 
@@ -199,12 +228,71 @@ export default function PrediccionesCombustible() {
     <DashboardLayout>
       <div className="space-y-6">
 
-        <div>
-          <h2 className="text-xl font-bold text-foreground">Predicción de Consumo de Combustible</h2>
-          <p className="text-sm text-muted-foreground">
-            Modelo supervisado · análisis de costos · detección de ineficiencias — CRISP-DM Sprint 3
-          </p>
+        <div className="flex items-start justify-between gap-4 flex-wrap">
+          <div>
+            <h2 className="text-xl font-bold text-foreground">Predicción de Consumo de Combustible</h2>
+            <p className="text-sm text-muted-foreground">
+              Modelo supervisado · análisis de costos · detección de ineficiencias — CRISP-DM Sprint 3
+            </p>
+          </div>
         </div>
+
+        {/* ── Estado del modelo ── */}
+        {modeloEstado && (
+          <Card className={modeloEstado.trained_with_company_data
+            ? "border-green-500/30 bg-green-500/5"
+            : "border-orange-500/30 bg-orange-500/5"
+          }>
+            <CardContent className="p-4">
+              <div className="flex items-center justify-between gap-4 flex-wrap">
+                <div className="flex items-center gap-3">
+                  {modeloEstado.trained_with_company_data
+                    ? <ShieldCheck className="h-5 w-5 text-green-600 shrink-0" />
+                    : <Globe className="h-5 w-5 text-orange-500 shrink-0" />
+                  }
+                  <div>
+                    <p className="text-sm font-semibold">
+                      {modeloEstado.trained_with_company_data
+                        ? "Modelo adaptado a esta empresa"
+                        : "Modelo genérico de referencia (dataset externo)"
+                      }
+                    </p>
+                    <p className="text-xs text-muted-foreground mt-0.5">
+                      {modeloEstado.trained_with_company_data
+                        ? `Entrenado con ${modeloEstado.n_empresa} transacciones propias + ${modeloEstado.n_base?.toLocaleString("es-CL")} base · err.rel ${modeloEstado.error_relativo_empresa_pct?.toFixed(1)}% sobre datos de flota`
+                        : `Random Forest entrenado con 5.795 registros externos · ${modeloEstado.n_transacciones_disponibles} transacciones disponibles para adaptar`
+                      }
+                    </p>
+                    {modeloEstado.retrained_at && (
+                      <p className="text-xs text-muted-foreground">
+                        Última adaptación: {new Date(modeloEstado.retrained_at).toLocaleString("es-CL")}
+                      </p>
+                    )}
+                  </div>
+                </div>
+                <div className="flex items-center gap-2">
+                  {!modeloEstado.puede_reentrenar && (
+                    <span className="text-xs text-muted-foreground">
+                      Faltan {modeloEstado.min_registros_requeridos - modeloEstado.n_transacciones_disponibles} transacciones para adaptar
+                    </span>
+                  )}
+                  <Button
+                    size="sm"
+                    variant={modeloEstado.trained_with_company_data ? "outline" : "default"}
+                    disabled={!modeloEstado.puede_reentrenar || retraining}
+                    onClick={handleReentrenar}
+                  >
+                    {retraining
+                      ? <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                      : <RefreshCw className="h-4 w-4 mr-2" />
+                    }
+                    {modeloEstado.trained_with_company_data ? "Re-adaptar modelo" : "Adaptar a mis datos"}
+                  </Button>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        )}
 
         <Card className="border-primary/30 bg-primary/5">
           <CardContent className="p-4 flex gap-3">
