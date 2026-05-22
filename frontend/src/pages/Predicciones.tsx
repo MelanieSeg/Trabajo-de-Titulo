@@ -1,12 +1,11 @@
 import { Brain, TrendingUp, AlertTriangle, CheckCircle, Loader2, Fuel, TriangleAlert, ArrowRight, HelpCircle } from "lucide-react";
 import { DashboardLayout } from "@/components/DashboardLayout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { ConsumptionChart } from "@/components/ConsumptionChart";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { useOperationsOverview } from "@/hooks/useOperationsOverview";
-import { runMlTraining, getAnalisisFlota, getConsumoMensualFlota, type AnalisisFlotaResult } from "@/lib/api";
+import { runMlTraining, getAnalisisFlota, type AnalisisFlotaResult } from "@/lib/api";
 import { useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
@@ -23,18 +22,6 @@ export default function Predicciones() {
     staleTime: 1000 * 60 * 5,
   });
 
-  const { data: combustibleChart } = useQuery<Record<string, unknown>[]>({
-    queryKey: ["consumo-mensual-flota"],
-    queryFn: getConsumoMensualFlota,
-    staleTime: 1000 * 60 * 5,
-  });
-
-  const chartData = data?.timeseries ?? [];
-  const energyCatalog = data?.energy_catalog?.map((item) => ({
-    code: item.code,
-    label: item.label,
-    unit: item.unit,
-  }));
   const recommendations = data?.predictions.recommendations ?? [];
 
   const anomaliasAltas = flota?.anomalias.filter((a) => a.severidad === "alta").length ?? 0;
@@ -55,11 +42,6 @@ export default function Predicciones() {
       setTraining(false);
     }
   };
-
-  const fuelCatalog = [
-    { code: "diesel_l", label: "Diésel", unit: "L" },
-    { code: "gasoil_l", label: "Gas Oil", unit: "L" },
-  ];
 
   return (
     <DashboardLayout>
@@ -142,22 +124,6 @@ export default function Predicciones() {
             </div>
           </CardContent>
         </Card>
-
-        {/* ── Gráfico multienergía (agua + electricidad) ── */}
-        <ConsumptionChart
-          data={chartData}
-          energyCatalog={energyCatalog}
-          subtitle="Pronóstico multienergía con línea de predicción punteada"
-        />
-
-        {/* ── Gráfico combustible (diésel + gas oil) ── */}
-        {combustibleChart && combustibleChart.length > 0 && (
-          <ConsumptionChart
-            data={combustibleChart as Parameters<typeof ConsumptionChart>[0]["data"]}
-            energyCatalog={fuelCatalog}
-            subtitle="Consumo real vs predicho de flota — Diésel y Gas Oil (L)"
-          />
-        )}
 
         {/* ── KPIs de flota combustible ── */}
         {flota && flota.total_registros_analizados > 0 && (

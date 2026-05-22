@@ -740,20 +740,53 @@ def reentrenar_modelo(
 
     df_base_clean = df_base[FEATURES + ["log_fuel"]].copy()
 
-    # 4. Preparar features de empresa
-    rows = []
+    # 4. Preparar features de empresa — filtrar registros anómalos
+    # Se usa el modelo actual para detectar qué registros tienen una desviación
+    # excesiva (>35%). Incluirlos en el entrenamiento sesgaría el modelo
+    # hacia consumos ineficientes como si fueran normales.
+    modelo_actual = _get_model()
+    _UMBRAL_FILTRO_REENTRENAMIENTO = 35.0  # % de desvío máximo aceptado
+
+    rows_limpios = []
+    n_excluidos = 0
     for t in transacciones:
-        kpl       = float(t.km_per_liter) if t.km_per_liter else np.nan
+        real = float(t.fuel_liters_real)  # type: ignore[arg-type]
+        pred_actual = _predecir_litros(
+            modelo_actual, t.dist_km, t.km_per_liter, t.vehicle_cat, t.fuel_type
+        )
+        desvio = ((real - pred_actual) / pred_actual * 100) if pred_actual > 0 else 0.0
+        if abs(desvio) > _UMBRAL_FILTRO_REENTRENAMIENTO:
+            # Registro anómalo: no enseñar al nuevo modelo que esto es "normal"
+            n_excluidos += 1
+            continue
+        kpl        = float(t.km_per_liter) if t.km_per_liter else np.nan
         litros_teo = float(t.dist_km) / kpl if t.km_per_liter else np.nan
-        rows.append({
+        rows_limpios.append({
             "dist_km":         float(t.dist_km),
             "km_per_liter":    kpl,
             "litros_teoricos": litros_teo,
             "vehicle_cat":     t.vehicle_cat,
             "fuel_type":       t.fuel_type,
-            "log_fuel":        np.log1p(float(t.fuel_liters_real)),
+            "log_fuel":        np.log1p(real),
         })
-    df_empresa = pd.DataFrame(rows)
+
+    n_limpios = len(rows_limpios)
+    if n_limpios < _MIN_REGISTROS_REENTRENAMIENTO:
+        return {
+            "success": False,
+            "message": (
+                f"Tras excluir {n_excluidos} registros anómalos (desvío >35%), "
+                f"solo quedan {n_limpios} registros válidos para entrenamiento. "
+                f"Se necesitan al menos {_MIN_REGISTROS_REENTRENAMIENTO}. "
+                f"Registre más operaciones normales antes de reentrenar."
+            ),
+            "n_empresa": n_empresa,
+            "n_limpios": n_limpios,
+            "n_excluidos": n_excluidos,
+            "n_requeridas": _MIN_REGISTROS_REENTRENAMIENTO,
+        }
+
+    df_empresa = pd.DataFrame(rows_limpios)
 
     # 5. Combinar: base + empresa × 3 (peso triple a datos propios de la empresa)
     df_combinado = pd.concat(
@@ -797,6 +830,8 @@ def reentrenar_modelo(
         "trained_with_company_data":   True,
         "n_base":                      len(df_base),
         "n_empresa":                   n_empresa,
+        "n_limpios":                   n_limpios,
+        "n_excluidos":                 n_excluidos,
         "n_total_entrenamiento":       len(df_combinado),
         "error_relativo_empresa_pct":  round(error_rel, 2),
         "mae_empresa_L":               round(mae, 1),
@@ -812,8 +847,8 @@ def reentrenar_modelo(
     return {
         "success": True,
         "message": (
-            f"Modelo reentrenado exitosamente con {n_empresa} transacciones de la empresa "
-            f"+ {len(df_base)} registros base. "
+            f"Modelo reentrenado con {n_limpios} transacciones limpias de empresa "
+            f"({n_excluidos} anómalas excluidas) + {len(df_base)} registros base. "
             f"Error relativo sobre datos propios: {error_rel:.1f}%."
         ),
         **meta,

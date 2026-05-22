@@ -5,7 +5,7 @@ from datetime import datetime, timedelta, timezone
 from secrets import token_urlsafe
 from typing import Any
 
-from sqlalchemy import func, select, text
+from sqlalchemy import extract, func, select, text
 from sqlalchemy.orm import Session
 
 from app.core.security import hash_password
@@ -19,6 +19,7 @@ from app.db.models import (
     ETLSchedule,
     EfficiencyTarget,
     Facility,
+    FuelTransaction,
     MLPrediction,
     MonthlyConsumption,
     ResourceMonthlyConsumption,
@@ -48,6 +49,14 @@ PRIMARY_ENERGIES = [
         "unit": "m³",
         "category": "Consumo hídrico",
         "metric_name": "water_m3",
+        "lower_is_better": True,
+    },
+    {
+        "code": "fuel",
+        "label": "Combustible",
+        "unit": "L",
+        "category": "Flota",
+        "metric_name": "fuel_liters",
         "lower_is_better": True,
     },
 ]
@@ -262,6 +271,38 @@ def _build_energy_timeseries(
                 "energy_predictions": {},
             }
         combined[key]["energy_values"][str(row.code)] = round(_safe_float(row.value), 2)
+
+    # Agregar consumo mensual de combustible (flota)
+    fuel_rows = db.execute(
+        select(
+            extract("year", FuelTransaction.fecha).label("year"),
+            extract("month", FuelTransaction.fecha).label("month"),
+            func.sum(FuelTransaction.fuel_liters_real).label("value"),
+        )
+        .where(FuelTransaction.fuel_liters_real.isnot(None))
+        .group_by(
+            extract("year", FuelTransaction.fecha),
+            extract("month", FuelTransaction.fecha),
+        )
+        .order_by(
+            extract("year", FuelTransaction.fecha),
+            extract("month", FuelTransaction.fecha),
+        )
+    ).all()
+
+    for row in fuel_rows:
+        key = month_key(int(row.year), int(row.month))
+        if min_key and key < min_key:
+            continue
+        if key not in combined:
+            combined[key] = {
+                "year": int(row.year),
+                "month": int(row.month),
+                "label": month_label(int(row.year), int(row.month)),
+                "energy_values": {},
+                "energy_predictions": {},
+            }
+        combined[key]["energy_values"]["fuel"] = round(_safe_float(row.value), 2)
 
     prediction_rows = db.execute(
         select(MLPrediction.scope, MLPrediction.utility, MLPrediction.year, MLPrediction.month, MLPrediction.predicted_value)
