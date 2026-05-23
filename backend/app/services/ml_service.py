@@ -16,7 +16,9 @@ from sklearn.preprocessing import StandardScaler
 from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
-from app.db.models import MLPrediction, MonthlyConsumption, SmartAlert
+from sqlalchemy import extract, func
+
+from app.db.models import FuelTransaction, MLPrediction, MonthlyConsumption, SmartAlert
 from app.services.activity_service import log_activity
 from app.services.alert_service import get_or_create_alert_config
 from app.utils.date_utils import month_label, next_month
@@ -261,6 +263,50 @@ def _train_utility(
     return predictions, champion, benchmark, champion_model_name
 
 
+def _load_fuel_series(db: Session) -> dict[str, pd.DataFrame]:
+    """
+    Carga el consumo mensual real de combustible desde fuel_transactions,
+    separado por tipo: 'fuel_diesel' (D) y 'fuel_gasoil' (G).
+    Retorna un dict {código: DataFrame} solo para tipos con datos.
+    """
+    rows = db.execute(
+        select(
+            extract("year", FuelTransaction.fecha).label("year"),
+            extract("month", FuelTransaction.fecha).label("month"),
+            FuelTransaction.fuel_type,
+            func.sum(FuelTransaction.fuel_liters_real).label("fuel_liters"),
+        )
+        .where(FuelTransaction.fuel_liters_real.isnot(None))
+        .group_by(
+            extract("year", FuelTransaction.fecha),
+            extract("month", FuelTransaction.fecha),
+            FuelTransaction.fuel_type,
+        )
+        .order_by(
+            extract("year", FuelTransaction.fecha),
+            extract("month", FuelTransaction.fecha),
+        )
+    ).all()
+
+    if not rows:
+        return {}
+
+    by_type: dict[str, list[dict]] = {"D": [], "G": []}
+    for r in rows:
+        by_type[str(r.fuel_type)].append({
+            "year": int(r.year),
+            "month": int(r.month),
+            "fuel_liters": float(r.fuel_liters),
+        })
+
+    result: dict[str, pd.DataFrame] = {}
+    if by_type["D"]:
+        result["fuel_diesel"] = pd.DataFrame(by_type["D"])
+    if by_type["G"]:
+        result["fuel_gasoil"] = pd.DataFrame(by_type["G"])
+    return result
+
+
 def train_and_predict(db: Session, horizon_months: int = 3) -> TrainResult:
     df = _load_series(db)
     if df.empty:
@@ -284,6 +330,39 @@ def train_and_predict(db: Session, horizon_months: int = 3) -> TrainResult:
         horizon=horizon_months,
     )
 
+    # Predicción de combustible por tipo (Diésel / Gas Oil)
+    fuel_series_map = _load_fuel_series(db)
+    fuel_results: dict[str, tuple[list[float], str, int, int]] = {}
+    # fuel_results[code] = (preds, model_name, base_year, base_month)
+
+    for fuel_code, df_f in fuel_series_map.items():
+        try:
+            series = df_f["fuel_liters"].to_numpy(dtype=float)
+            months = df_f["month"].to_numpy(dtype=float)
+            if len(series) >= 12:
+                preds_raw, _, _, mname = _train_utility(
+                    utility=fuel_code,
+                    series=series,
+                    months_arr=months,
+                    horizon=horizon_months,
+                )
+                preds = preds_raw
+            else:
+                n = len(series)
+                X_f = np.arange(n).reshape(-1, 1)
+                lr = LinearRegression()
+                lr.fit(X_f, series)
+                preds = [
+                    max(0.0, float(lr.predict([[n + step - 1]])[0]))
+                    for step in range(1, horizon_months + 1)
+                ]
+                mname = "LinearTrend"
+            base_y = int(df_f.iloc[-1]["year"])
+            base_m = int(df_f.iloc[-1]["month"])
+            fuel_results[fuel_code] = (preds, mname, base_y, base_m)
+        except Exception:
+            pass
+
     db.execute(delete(MLPrediction).where(MLPrediction.scope == "global"))
 
     latest_year = int(df.iloc[-1]["year"])
@@ -292,6 +371,7 @@ def train_and_predict(db: Session, horizon_months: int = 3) -> TrainResult:
     predictions_payload: list[dict[str, Any]] = []
     future_dates: list[tuple[int, int]] = []
     y, m = latest_year, latest_month
+
     for idx in range(horizon_months):
         y, m = next_month(y, m)
         future_dates.append((y, m))
@@ -299,31 +379,32 @@ def train_and_predict(db: Session, horizon_months: int = 3) -> TrainResult:
         e_val = float(elec_preds[idx])
         w_val = float(water_preds[idx])
 
-        db.add(
-            MLPrediction(
-                scope="global",
-                utility="electricity",
-                year=y,
-                month=m,
-                predicted_value=e_val,
-                model_name=elec_model_name,
-                validation_mae=elec_best.mae,
-            )
-        )
-        db.add(
-            MLPrediction(
-                scope="global",
-                utility="water",
-                year=y,
-                month=m,
-                predicted_value=w_val,
-                model_name=water_model_name,
-                validation_mae=water_best.mae,
-            )
-        )
-
+        db.add(MLPrediction(
+            scope="global", utility="electricity",
+            year=y, month=m, predicted_value=e_val,
+            model_name=elec_model_name, validation_mae=elec_best.mae,
+        ))
+        db.add(MLPrediction(
+            scope="global", utility="water",
+            year=y, month=m, predicted_value=w_val,
+            model_name=water_model_name, validation_mae=water_best.mae,
+        ))
         predictions_payload.append({"utility": "electricity", "year": y, "month": m, "value": round(e_val, 2)})
         predictions_payload.append({"utility": "water", "year": y, "month": m, "value": round(w_val, 2)})
+
+        # Guardar predicciones de combustible por tipo (Diésel / Gas Oil)
+        for fuel_code, (fpreds, fmname, fy_base, fm_base) in fuel_results.items():
+            if idx < len(fpreds):
+                fy, fm = fy_base, fm_base
+                for s in range(idx + 1):
+                    fy, fm = next_month(fy, fm)
+                f_val = round(float(fpreds[idx]), 2)
+                db.add(MLPrediction(
+                    scope="global", utility=fuel_code,
+                    year=fy, month=fm, predicted_value=f_val,
+                    model_name=fmname, validation_mae=None,
+                ))
+                predictions_payload.append({"utility": fuel_code, "year": fy, "month": fm, "value": f_val})
 
     cfg = get_or_create_alert_config(db)
     first_year, first_month = future_dates[0]

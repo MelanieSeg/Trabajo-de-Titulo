@@ -5,7 +5,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { useOperationsOverview } from "@/hooks/useOperationsOverview";
-import { runMlTraining, getAnalisisFlota, type AnalisisFlotaResult } from "@/lib/api";
+import { runMlTraining, getAnalisisFlota, getModeloEstado, reentrenarCombustible, type AnalisisFlotaResult, type ModeloEstado } from "@/lib/api";
 import { useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
@@ -22,6 +22,12 @@ export default function Predicciones() {
     staleTime: 1000 * 60 * 5,
   });
 
+  const { data: modeloEstado, refetch: refetchEstado } = useQuery<ModeloEstado>({
+    queryKey: ["combustible-modelo-estado"],
+    queryFn: getModeloEstado,
+    staleTime: 1000 * 60,
+  });
+
   const recommendations = data?.predictions.recommendations ?? [];
 
   const anomaliasAltas = flota?.anomalias.filter((a) => a.severidad === "alta").length ?? 0;
@@ -30,12 +36,30 @@ export default function Predicciones() {
   const retrainModel = async () => {
     try {
       setTraining(true);
+
+      // 1. Reentrenar modelos de electricidad, agua y tendencia de combustible
       await runMlTraining(3);
+
+      // 2. Re-adaptar el modelo de viajes individuales si hay suficientes datos
+      if (modeloEstado?.puede_reentrenar) {
+        const res = await reentrenarCombustible();
+        if (!res.success) {
+          toast.warning(`Modelos E/A actualizados. Combustible: ${res.message ?? "no adaptado"}`);
+        } else {
+          toast.success("Todos los modelos actualizados correctamente");
+        }
+      } else {
+        toast.success("Modelos de electricidad y agua actualizados");
+        if (modeloEstado) {
+          const faltan = modeloEstado.min_registros_requeridos - modeloEstado.n_transacciones_disponibles;
+          toast.info(`Modelo de flota: faltan ${faltan} transacciones para adaptar`);
+        }
+      }
+
       await queryClient.invalidateQueries({ queryKey: ["operations-overview"] });
       await queryClient.invalidateQueries({ queryKey: ["dashboard-data"] });
       await queryClient.invalidateQueries({ queryKey: ["analisis-flota"] });
-      await queryClient.invalidateQueries({ queryKey: ["consumo-mensual-flota"] });
-      toast.success("Modelo reentrenado con éxito");
+      await refetchEstado();
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "No se pudo reentrenar el modelo");
     } finally {
@@ -54,7 +78,7 @@ export default function Predicciones() {
           </div>
           <Button onClick={retrainModel} disabled={training}>
             {training ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Brain className="h-4 w-4 mr-2" />}
-            Reentrenar Modelo
+            {training ? "Actualizando modelos…" : "Actualizar todos los modelos"}
           </Button>
         </div>
 
@@ -110,16 +134,31 @@ export default function Predicciones() {
               <p className="text-xs text-muted-foreground">Agua</p>
               <p className="font-semibold">{data?.predictions.champion_models?.water ?? "N/D"}</p>
             </div>
-            <div className="rounded-lg border border-orange-500/30 bg-orange-500/5 p-3">
+            <div className={`rounded-lg border p-3 ${modeloEstado?.trained_with_company_data ? "border-green-500/30 bg-green-500/5" : "border-orange-500/30 bg-orange-500/5"}`}>
               <p className="text-xs text-muted-foreground flex items-center gap-1">
-                <Fuel className="h-3 w-3" /> Combustible / Flota
+                <Fuel className="h-3 w-3" /> Combustible / Flota (viajes individuales)
               </p>
               <p className="font-semibold text-sm">Random Forest + litros_teoricos</p>
-              <p className="text-[11px] text-muted-foreground mt-0.5">err.rel 6.13% · CRISP-DM Sprint 3</p>
-              {flota && (
-                <p className="text-[11px] text-orange-600 mt-1 font-medium">
-                  Precisión sobre flota real: {flota.precision_promedio_pct.toFixed(1)}%
-                </p>
+              {modeloEstado?.trained_with_company_data ? (
+                <>
+                  <p className="text-[11px] text-green-700 mt-0.5 font-medium">
+                    Adaptado a esta empresa · {modeloEstado.n_empresa} transacciones
+                  </p>
+                  <p className="text-[11px] text-muted-foreground">
+                    err.rel {modeloEstado.error_relativo_empresa_pct?.toFixed(1)}% · última actualización {modeloEstado.retrained_at ? new Date(modeloEstado.retrained_at).toLocaleDateString("es-CL") : "—"}
+                  </p>
+                </>
+              ) : (
+                <>
+                  <p className="text-[11px] text-orange-600 mt-0.5">Modelo genérico (dataset externo UK)</p>
+                  <p className="text-[11px] text-muted-foreground">
+                    {modeloEstado
+                      ? modeloEstado.puede_reentrenar
+                        ? `${modeloEstado.n_transacciones_disponibles} transacciones listas — se adaptará al actualizar`
+                        : `Faltan ${modeloEstado.min_registros_requeridos - modeloEstado.n_transacciones_disponibles} transacciones para adaptar`
+                      : "err.rel 6.13% · CRISP-DM Sprint 3"}
+                  </p>
+                </>
               )}
             </div>
           </CardContent>

@@ -37,7 +37,8 @@ const ranges = [
 const ENERGY_COLORS: Record<string, string> = {
   electricity: "hsl(45 95% 52%)",
   water: "hsl(200 85% 48%)",
-  fuel: "hsl(27 80% 48%)",
+  fuel_diesel: "hsl(27 80% 48%)",
+  fuel_gasoil: "hsl(14 72% 42%)",
   gas_natural: "hsl(140 60% 45%)",
   diesel: "hsl(20 82% 47%)",
   gasolina: "hsl(12 78% 52%)",
@@ -123,7 +124,7 @@ export function ConsumptionChart({
   // Por defecto: mostrar solo electricity y water si hay muchas series
   const defaultSelected = useMemo(() => {
     if (!needsSelector) return new Set(seriesCatalog.map((s) => s.code));
-    const priority = ["electricity", "water", "fuel", "diesel_l", "gasoil_l"];
+    const priority = ["electricity", "water", "fuel_diesel", "fuel_gasoil", "diesel_l", "gasoil_l"];
     const initial = seriesCatalog.filter((s) => priority.includes(s.code)).map((s) => s.code);
     return new Set(initial.length > 0 ? initial : seriesCatalog.slice(0, 2).map((s) => s.code));
   }, [seriesCatalog, needsSelector]);

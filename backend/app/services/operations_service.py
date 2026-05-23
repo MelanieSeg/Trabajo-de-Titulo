@@ -52,11 +52,19 @@ PRIMARY_ENERGIES = [
         "lower_is_better": True,
     },
     {
-        "code": "fuel",
-        "label": "Combustible",
+        "code": "fuel_diesel",
+        "label": "Diésel (flota)",
         "unit": "L",
         "category": "Flota",
-        "metric_name": "fuel_liters",
+        "metric_name": "fuel_diesel_liters",
+        "lower_is_better": True,
+    },
+    {
+        "code": "fuel_gasoil",
+        "label": "Gas Oil (flota)",
+        "unit": "L",
+        "category": "Flota",
+        "metric_name": "fuel_gasoil_liters",
         "lower_is_better": True,
     },
 ]
@@ -272,17 +280,19 @@ def _build_energy_timeseries(
             }
         combined[key]["energy_values"][str(row.code)] = round(_safe_float(row.value), 2)
 
-    # Agregar consumo mensual de combustible (flota)
+    # Agregar consumo mensual de combustible por tipo (Diésel / Gas Oil)
     fuel_rows = db.execute(
         select(
             extract("year", FuelTransaction.fecha).label("year"),
             extract("month", FuelTransaction.fecha).label("month"),
+            FuelTransaction.fuel_type,
             func.sum(FuelTransaction.fuel_liters_real).label("value"),
         )
         .where(FuelTransaction.fuel_liters_real.isnot(None))
         .group_by(
             extract("year", FuelTransaction.fecha),
             extract("month", FuelTransaction.fecha),
+            FuelTransaction.fuel_type,
         )
         .order_by(
             extract("year", FuelTransaction.fecha),
@@ -302,7 +312,8 @@ def _build_energy_timeseries(
                 "energy_values": {},
                 "energy_predictions": {},
             }
-        combined[key]["energy_values"]["fuel"] = round(_safe_float(row.value), 2)
+        code = "fuel_diesel" if row.fuel_type == "D" else "fuel_gasoil"
+        combined[key]["energy_values"][code] = round(_safe_float(row.value), 2)
 
     prediction_rows = db.execute(
         select(MLPrediction.scope, MLPrediction.utility, MLPrediction.year, MLPrediction.month, MLPrediction.predicted_value)
@@ -314,7 +325,7 @@ def _build_energy_timeseries(
     ).all()
 
     for row in prediction_rows:
-        if row.scope == "global" and row.utility not in {"electricity", "water"}:
+        if row.scope == "global" and row.utility not in {"electricity", "water", "fuel_diesel", "fuel_gasoil"}:
             continue
         code = str(row.utility)
         if code not in energy_codes:

@@ -15,10 +15,11 @@ import { toast } from "sonner";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   predictFuelConsumption, getFuelHistorial, createFuelTransaccion, getFuelTransacciones,
-  getModeloEstado, reentrenarCombustible,
+  getModeloEstado,
   type FuelPredictionRequest, type FuelPredictionResponse, type FuelPredictionLogItem,
   type FuelTransactionCreate, type FuelTransactionItem, type ModeloEstado,
 } from "@/lib/api";
+import { Link } from "react-router-dom";
 
 const VEHICLE_LABELS: Record<FuelPredictionRequest["vehicle_cat"], string> = {
   Van:   "Van / Furgoneta",
@@ -112,27 +113,6 @@ export default function PrediccionesCombustible() {
     queryFn: getModeloEstado,
     staleTime: 1000 * 60 * 5,
   });
-
-  const [retraining, setRetraining] = useState(false);
-
-  async function handleReentrenar() {
-    setRetraining(true);
-    try {
-      const res = await reentrenarCombustible();
-      if (res.success) {
-        toast.success("Modelo adaptado exitosamente a los datos de la empresa");
-        refetchEstado();
-        await queryClient.invalidateQueries({ queryKey: ["analisis-flota"] });
-        await queryClient.invalidateQueries({ queryKey: ["consumo-mensual-flota"] });
-      } else {
-        toast.warning(String(res.message ?? "No se pudo reentrenar el modelo"));
-      }
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Error al reentrenar el modelo");
-    } finally {
-      setRetraining(false);
-    }
-  }
 
   const HIST_PAGE_SIZE = 10;
 
@@ -271,23 +251,22 @@ export default function PrediccionesCombustible() {
                   </div>
                 </div>
                 <div className="flex items-center gap-2">
-                  {!modeloEstado.puede_reentrenar && (
-                    <span className="text-xs text-muted-foreground">
-                      Faltan {modeloEstado.min_registros_requeridos - modeloEstado.n_transacciones_disponibles} transacciones para adaptar
+                  {!modeloEstado.trained_with_company_data && modeloEstado.puede_reentrenar && (
+                    <span className="text-xs text-green-700 font-medium">
+                      {modeloEstado.n_transacciones_disponibles} transacciones listas
                     </span>
                   )}
-                  <Button
-                    size="sm"
-                    variant={modeloEstado.trained_with_company_data ? "outline" : "default"}
-                    disabled={!modeloEstado.puede_reentrenar || retraining}
-                    onClick={handleReentrenar}
-                  >
-                    {retraining
-                      ? <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                      : <RefreshCw className="h-4 w-4 mr-2" />
-                    }
-                    {modeloEstado.trained_with_company_data ? "Re-adaptar modelo" : "Adaptar a mis datos"}
-                  </Button>
+                  {!modeloEstado.puede_reentrenar && (
+                    <span className="text-xs text-muted-foreground">
+                      Faltan {modeloEstado.min_registros_requeridos - modeloEstado.n_transacciones_disponibles} transacciones
+                    </span>
+                  )}
+                  <Link to="/predicciones-ml">
+                    <Button size="sm" variant="outline">
+                      <RefreshCw className="h-4 w-4 mr-2" />
+                      Actualizar en Predicciones ML
+                    </Button>
+                  </Link>
                 </div>
               </div>
             </CardContent>
