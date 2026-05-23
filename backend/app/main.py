@@ -54,15 +54,27 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
 
         # Protección contra XSS
         response.headers["X-XSS-Protection"] = "1; mode=block"
-        response.headers["Content-Security-Policy"] = (
-            "default-src 'self'; "
-            "script-src 'self' 'unsafe-inline'; "
-            "style-src 'self' 'unsafe-inline'; "
-            "img-src 'self' data: https:; "
-            "font-src 'self'; "
-            "connect-src 'self' https:; "
-            "frame-ancestors 'none'"
-        )
+        # Swagger UI carga assets desde CDN. Relajamos CSP solo para /docs y /redoc.
+        if request.url.path.startswith("/docs") or request.url.path.startswith("/redoc"):
+            response.headers["Content-Security-Policy"] = (
+                "default-src 'self'; "
+                "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; "
+                "style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; "
+                "img-src 'self' data: https:; "
+                "font-src 'self' https://cdn.jsdelivr.net; "
+                "connect-src 'self' https:; "
+                "frame-ancestors 'none'"
+            )
+        else:
+            response.headers["Content-Security-Policy"] = (
+                "default-src 'self'; "
+                "script-src 'self' 'unsafe-inline'; "
+                "style-src 'self' 'unsafe-inline'; "
+                "img-src 'self' data: https:; "
+                "font-src 'self'; "
+                "connect-src 'self' https:; "
+                "frame-ancestors 'none'"
+            )
 
         # HSTS (HTTP Strict Transport Security)
         response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
