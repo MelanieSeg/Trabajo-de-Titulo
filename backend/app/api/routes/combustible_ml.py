@@ -523,7 +523,20 @@ def consumo_mensual(db: Session = Depends(get_db)) -> list[dict[str, Any]]:
     return result
 
 
-@router.get("/exportar-retc")
+@router.get(
+    "/exportar-retc",
+    response_class=Response,
+    responses={
+        200: {
+            "description": "CSV exportado en formato RETC",
+            "content": {
+                "text/csv": {
+                    "schema": {"type": "string", "format": "binary"}
+                }
+            },
+        }
+    },
+)
 def exportar_retc(
     anio: Optional[int] = None,
     db: Session = Depends(get_db),

@@ -3,10 +3,12 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from typing import Any
 
-from sqlalchemy import func, select
+from sqlalchemy import extract, func, select
 from sqlalchemy.orm import Session
 
 from app.db.models import (
+    Facility,
+    FuelTransaction,
     MLPrediction,
     MonthlyConsumption,
     ResourceAreaDistribution,
@@ -16,6 +18,11 @@ from app.db.models import (
 )
 from app.services.activity_service import log_activity
 from app.utils.date_utils import month_label, next_month
+
+# Tasa de conversión CLP → USD (aproximación operacional)
+_CLP_PER_USD: float = 950.0
+# Factor de emisiones diésel (kg CO₂ / litro)
+_CO2_DIESEL_KG_PER_LITER: float = 2.68
 
 AREA_WEIGHTS = [
     ("Producción", 30.0),
@@ -492,7 +499,132 @@ def _latest_area_breakdown(db: Session, resource_type_id: int, year: int, month:
     ]
 
 
+def _sync_fleet_areas(
+    db: Session,
+    record_id: int,
+    year: int,
+    month: int,
+    fuel_type: str,
+) -> None:
+    """Reemplaza las áreas del registro con la distribución real por categoría de vehículo
+    para el tipo de combustible indicado ('D' o 'G')."""
+    cat_rows = db.execute(
+        select(
+            FuelTransaction.vehicle_cat,
+            func.sum(FuelTransaction.fuel_liters_real).label("liters"),
+        )
+        .where(
+            FuelTransaction.fuel_type == fuel_type,
+            FuelTransaction.fuel_liters_real > 0,
+            extract("year",  FuelTransaction.fecha) == year,
+            extract("month", FuelTransaction.fecha) == month,
+        )
+        .group_by(FuelTransaction.vehicle_cat)
+    ).all()
+
+    if not cat_rows:
+        return
+
+    total = sum(float(r.liters or 0) for r in cat_rows)
+    if total <= 0:
+        return
+
+    # Elimina áreas antiguas (sintéticas o previas) para este registro
+    db.query(ResourceAreaDistribution).filter(
+        ResourceAreaDistribution.resource_consumption_id == record_id
+    ).delete()
+
+    for cat_row in cat_rows:
+        pct = round(float(cat_row.liters or 0) / total * 100, 2)
+        db.add(
+            ResourceAreaDistribution(
+                resource_consumption_id=record_id,
+                area_name=cat_row.vehicle_cat,
+                percentage=pct,
+            )
+        )
+
+
+def sync_diesel_from_transactions(db: Session) -> int:
+    """Sincroniza ResourceMonthlyConsumption[diesel] con datos reales de fuel_transactions.
+
+    Elimina cualquier dato sintético previo y reinserta desde las transacciones
+    de flota agrupadas por mes. Retorna el número de meses sincronizados.
+    """
+    resource = db.scalar(
+        select(ResourceType).where(ResourceType.code == "diesel", ResourceType.is_active.is_(True))
+    )
+    if not resource:
+        return 0
+
+    facility_id = db.scalar(select(Facility.id).order_by(Facility.id.asc()).limit(1))
+    if not facility_id:
+        return 0
+
+    # Agrega transacciones de diésel real por mes
+    month_rows = db.execute(
+        select(
+            extract("year",  FuelTransaction.fecha).label("year"),
+            extract("month", FuelTransaction.fecha).label("month"),
+            func.sum(FuelTransaction.fuel_liters_real).label("total_liters"),
+            func.sum(
+                FuelTransaction.fuel_liters_real * FuelTransaction.precio_litro_clp
+            ).label("total_clp"),
+        )
+        .where(FuelTransaction.fuel_type == "D", FuelTransaction.fuel_liters_real > 0)
+        .group_by(
+            extract("year",  FuelTransaction.fecha),
+            extract("month", FuelTransaction.fecha),
+        )
+        .order_by(
+            extract("year",  FuelTransaction.fecha),
+            extract("month", FuelTransaction.fecha),
+        )
+    ).all()
+
+    if not month_rows:
+        return 0
+
+    # Limpia todos los registros sintéticos de diésel (cascade elimina áreas también)
+    db.query(ResourceMonthlyConsumption).filter(
+        ResourceMonthlyConsumption.resource_type_id == resource.id,
+    ).delete()
+    db.flush()
+
+    count = 0
+    for row in month_rows:
+        year  = int(row.year)
+        month = int(row.month)
+        total_liters     = round(float(row.total_liters or 0), 4)
+        cost_usd         = round(float(row.total_clp or 0) / _CLP_PER_USD, 4)
+        emissions_tco2e  = round(total_liters * _CO2_DIESEL_KG_PER_LITER / 1000.0, 6)
+
+        record = ResourceMonthlyConsumption(
+            resource_type_id=resource.id,
+            facility_id=facility_id,
+            year=year,
+            month=month,
+            consumption_value=total_liters,
+            cost_usd=max(0.0, cost_usd),
+            emissions_tco2e=max(0.0, emissions_tco2e),
+            source="fuel_transactions",
+        )
+        db.add(record)
+        db.flush()
+
+        _sync_fleet_areas(db, record_id=record.id, year=year, month=month, fuel_type="D")
+        count += 1
+
+    return count
+
+
 def get_resource_overview(db: Session, code: str, months: int = 12) -> dict[str, Any]:
+    # Para diésel, sincroniza desde transacciones reales antes de construir la respuesta
+    if code == "diesel":
+        synced = sync_diesel_from_transactions(db)
+        if synced > 0:
+            db.flush()
+
     resource = _resource_row(db, code)
     series = _monthly_aggregates(db, resource.id)
     if len(series) > months:

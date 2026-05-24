@@ -39,7 +39,7 @@ const CO2_FACTOR: Record<FuelPredictionRequest["fuel_type"], number> = {
 };
 
 const PRECIO_DEFAULT: Record<FuelPredictionRequest["fuel_type"] | "", number> = {
-  D: 1050, G: 950, "": 1050,
+  D: 1415, G: 1415, "": 1415,
 };
 
 function clp(value: number) {
@@ -81,7 +81,7 @@ export default function PrediccionesCombustible() {
     dist_km:          string;
     km_per_liter:     string;
     precio_litro_clp: string;
-  }>({ vehicle_cat: "", fuel_type: "", dist_km: "", km_per_liter: "", precio_litro_clp: "1050" });
+  }>({ vehicle_cat: "", fuel_type: "", dist_km: "", km_per_liter: "", precio_litro_clp: "1415" });
 
   const [loading,      setLoading]      = useState(false);
   const [result,       setResult]       = useState<FuelPredictionResponse | null>(null);
@@ -98,7 +98,7 @@ export default function PrediccionesCombustible() {
     vehicle_id: "", vehicle_cat: "Van", fuel_type: "D",
     fecha: new Date().toISOString().slice(0, 10),
     dist_km: "", fuel_liters_real: "", km_per_liter: "",
-    precio_litro_clp: "1050", notas: "",
+    precio_litro_clp: "1415", notas: "",
   });
   const queryClient = useQueryClient();
 
@@ -108,7 +108,7 @@ export default function PrediccionesCombustible() {
     staleTime: 1000 * 60 * 2,
   });
 
-  const { data: modeloEstado, refetch: refetchEstado } = useQuery<ModeloEstado>({
+  const { data: modeloEstado } = useQuery<ModeloEstado>({
     queryKey: ["combustible-modelo-estado"],
     queryFn: getModeloEstado,
     staleTime: 1000 * 60 * 5,
@@ -143,7 +143,7 @@ export default function PrediccionesCombustible() {
         dist_km:          parseFloat(txForm.dist_km),
         fuel_liters_real: txForm.fuel_liters_real ? parseFloat(txForm.fuel_liters_real) : null,
         km_per_liter:     txForm.km_per_liter ? parseFloat(txForm.km_per_liter) : null,
-        precio_litro_clp: parseFloat(txForm.precio_litro_clp) || 1050,
+        precio_litro_clp: parseFloat(txForm.precio_litro_clp) || 1415,
         notas:            txForm.notas || null,
       };
       await createFuelTransaccion(payload);
@@ -188,7 +188,7 @@ export default function PrediccionesCombustible() {
   }
 
   function handleReset() {
-    setForm({ vehicle_cat: "", fuel_type: "", dist_km: "", km_per_liter: "", precio_litro_clp: "1050" });
+    setForm({ vehicle_cat: "", fuel_type: "", dist_km: "", km_per_liter: "", precio_litro_clp: "1415" });
     setResult(null);
     setLitrosReales("");
   }
@@ -212,7 +212,7 @@ export default function PrediccionesCombustible() {
           <div>
             <h2 className="text-xl font-bold text-foreground">Predicción de Consumo de Combustible</h2>
             <p className="text-sm text-muted-foreground">
-              Modelo supervisado · análisis de costos · detección de ineficiencias — CRISP-DM Sprint 3
+              Modelo supervisado de predicción de consumo de combustible para gestión de flota
             </p>
           </div>
         </div>
@@ -277,8 +277,8 @@ export default function PrediccionesCombustible() {
           <CardContent className="p-4 flex gap-3">
             <Info className="h-5 w-5 text-primary shrink-0 mt-0.5" />
             <p className="text-sm text-muted-foreground">
-              <span className="font-medium text-foreground">Random Forest · error relativo 6.13% </span>
-              — Entrenado con 5.795 registros de flota municipal (Leeds 2013–2019),
+              <span className="font-medium text-foreground">Random Forest · error relativo 6.13%.</span>
+              {" "}Entrenado con 5.795 registros de flota municipal (Leeds 2013–2019),
               validación TimeSeriesSplit. Feature engineering: <em>litros_teoricos = dist_km / km_per_liter</em>.
               Umbral de aceptación ≤ 10% ✓
             </p>
@@ -318,7 +318,7 @@ export default function PrediccionesCombustible() {
                   <SelectContent>
                     {(Object.keys(FUEL_LABELS) as FuelPredictionRequest["fuel_type"][]).map((ft) => (
                       <SelectItem key={ft} value={ft}>
-                        {FUEL_LABELS[ft]} — {CO2_FACTOR[ft]} kg CO₂/L
+                        {FUEL_LABELS[ft]} ({CO2_FACTOR[ft]} kg CO₂/L)
                       </SelectItem>
                     ))}
                   </SelectContent>
@@ -334,7 +334,7 @@ export default function PrediccionesCombustible() {
                 />
                 <p className="text-xs text-muted-foreground">
                   Kilómetros acumulados del vehículo en el período (semana, mes).
-                  No por viaje individual — el modelo fue entrenado con consumos agregados por período.
+                  No por viaje individual; el modelo fue entrenado con consumos agregados por período.
                 </p>
               </div>
 
@@ -344,7 +344,7 @@ export default function PrediccionesCombustible() {
                   <Badge variant="outline" className="ml-2 text-[10px] font-normal">Opcional</Badge>
                 </Label>
                 <Input
-                  type="number" min={0.1} step={0.1} placeholder="Ej: 8.5 — déjalo vacío para usar promedio de flota"
+                  type="number" min={0.1} step={0.1} placeholder="Ej: 8.5 (vacío: usa promedio de flota)"
                   value={form.km_per_liter}
                   onChange={(e) => setForm((f) => ({ ...f, km_per_liter: e.target.value }))}
                 />
@@ -358,7 +358,7 @@ export default function PrediccionesCombustible() {
               <div className="space-y-2">
                 <Label>Precio por litro (CLP)</Label>
                 <Input
-                  type="number" min={1} step={10} placeholder="Ej: 1050"
+                  type="number" min={1} step={10} placeholder="Ej: 1415"
                   value={form.precio_litro_clp}
                   onChange={(e) => setForm((f) => ({ ...f, precio_litro_clp: e.target.value }))}
                 />
@@ -441,7 +441,7 @@ export default function PrediccionesCombustible() {
             <CardHeader>
               <CardTitle className="text-base flex items-center gap-2">
                 <TrendingDown className="h-4 w-4 text-green-600" />
-                Escenario de optimización — +{result.optimizacion.mejora_eficiencia_pct}% de eficiencia
+                Escenario de optimización: +{result.optimizacion.mejora_eficiencia_pct}% de eficiencia
               </CardTitle>
             </CardHeader>
             <CardContent>
@@ -492,7 +492,7 @@ export default function PrediccionesCombustible() {
             <CardHeader>
               <CardTitle className="text-base flex items-center gap-2">
                 <TriangleAlert className="h-4 w-4 text-yellow-500" />
-                Verificación post-operación — real vs predicho
+                Verificación post-operación: real vs predicho
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
@@ -523,7 +523,7 @@ export default function PrediccionesCombustible() {
                       <TriangleAlert className="h-5 w-5 text-red-500 shrink-0 mt-0.5" />
                       <div>
                         <p className="text-sm font-semibold text-red-600">
-                          Alerta de ineficiencia operacional — desvío +{desv.toFixed(1)}%
+                          Alerta de ineficiencia operacional: desvío +{desv.toFixed(1)}%
                         </p>
                         <p className="text-sm text-muted-foreground mt-0.5">
                           El consumo real superó la predicción del modelo en más del 10%. Se recomienda
@@ -536,7 +536,7 @@ export default function PrediccionesCombustible() {
                       <CheckCircle className="h-5 w-5 text-green-500 shrink-0 mt-0.5" />
                       <div>
                         <p className="text-sm font-semibold text-green-600">
-                          Operación dentro del rango aceptable — desvío {desv >= 0 ? "+" : ""}{desv.toFixed(1)}%
+                          Operación dentro del rango aceptable (desvío {desv >= 0 ? "+" : ""}{desv.toFixed(1)}%)
                         </p>
                         <p className="text-sm text-muted-foreground mt-0.5">
                           El consumo real está dentro del umbral de ±10% definido por el modelo. No se detectan anomalías.
@@ -631,7 +631,7 @@ export default function PrediccionesCombustible() {
               </div>
               <div className="space-y-1">
                 <Label className="text-xs">Combustible *</Label>
-                <Select value={txForm.fuel_type} onValueChange={(v) => setTxForm((f) => ({ ...f, fuel_type: v, precio_litro_clp: v === "D" ? "1050" : "950" }))}>
+                <Select value={txForm.fuel_type} onValueChange={(v) => setTxForm((f) => ({ ...f, fuel_type: v, precio_litro_clp: "1415" }))}>
                   <SelectTrigger><SelectValue /></SelectTrigger>
                   <SelectContent>
                     <SelectItem value="D">Diésel</SelectItem>
@@ -733,10 +733,10 @@ export default function PrediccionesCombustible() {
                             : <span className="text-muted-foreground text-xs italic">no registrado</span>}
                         </td>
                         <td className="p-3 text-right text-muted-foreground">
-                          {t.km_per_liter != null ? t.km_per_liter.toFixed(1) : "—"}
+                          {t.km_per_liter != null ? t.km_per_liter.toFixed(1) : "N/D"}
                         </td>
                         <td className="p-3 text-xs text-muted-foreground max-w-[180px] truncate">
-                          {t.notas || "—"}
+                          {t.notas || "Sin notas"}
                         </td>
                       </tr>
                     ))}
@@ -810,7 +810,7 @@ export default function PrediccionesCombustible() {
                           <td className="p-3 text-right text-green-600 font-medium">
                             {item.ahorro_litros > 0
                               ? `${item.ahorro_litros.toLocaleString("es-CL", { maximumFractionDigits: 1 })} L`
-                              : "—"}
+                              : "0 L"}
                           </td>
                         </tr>
                       ))}

@@ -466,7 +466,7 @@ class FuelTransaction(Base):
     dist_km: Mapped[float] = mapped_column(Float, nullable=False)
     fuel_liters_real: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
     km_per_liter: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
-    precio_litro_clp: Mapped[float] = mapped_column(Float, nullable=False, default=1050.0)
+    precio_litro_clp: Mapped[float] = mapped_column(Float, nullable=False, default=1415.0)
     notas: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
 

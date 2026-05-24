@@ -145,7 +145,7 @@ export default function Predicciones() {
                     Adaptado a esta empresa · {modeloEstado.n_empresa} transacciones
                   </p>
                   <p className="text-[11px] text-muted-foreground">
-                    err.rel {modeloEstado.error_relativo_empresa_pct?.toFixed(1)}% · última actualización {modeloEstado.retrained_at ? new Date(modeloEstado.retrained_at).toLocaleDateString("es-CL") : "—"}
+                    err.rel {modeloEstado.error_relativo_empresa_pct?.toFixed(1)}% · última actualización {modeloEstado.retrained_at ? new Date(modeloEstado.retrained_at).toLocaleDateString("es-CL") : "sin registro"}
                   </p>
                 </>
               ) : (
@@ -154,9 +154,9 @@ export default function Predicciones() {
                   <p className="text-[11px] text-muted-foreground">
                     {modeloEstado
                       ? modeloEstado.puede_reentrenar
-                        ? `${modeloEstado.n_transacciones_disponibles} transacciones listas — se adaptará al actualizar`
+                        ? `${modeloEstado.n_transacciones_disponibles} transacciones listas, se adaptará al actualizar`
                         : `Faltan ${modeloEstado.min_registros_requeridos - modeloEstado.n_transacciones_disponibles} transacciones para adaptar`
-                      : "err.rel 6.13% · CRISP-DM Sprint 3"}
+                      : "err.rel 6.13% sobre dataset de referencia"}
                   </p>
                 </>
               )}
@@ -245,7 +245,7 @@ export default function Predicciones() {
                   <p className="text-xs text-muted-foreground">
                     {flota.anomalias.filter(a => a.severidad === "alta").length} alta ·{" "}
                     {flota.anomalias.filter(a => a.severidad === "media").length} media ·{" "}
-                    {flota.anomalias.filter(a => a.severidad === "baja").length} baja —{" "}
+                    {flota.anomalias.filter(a => a.severidad === "baja").length} baja ·{" "}
                     {flota.anomalias.reduce((s, a) => s + a.co2_exceso_kg, 0).toFixed(0)} kg CO₂ en exceso
                   </p>
                 </div>
@@ -292,7 +292,7 @@ export default function Predicciones() {
                       <AlertTriangle className="h-5 w-5 text-red-500 shrink-0 mt-0.5" />
                       <div className="flex-1">
                         <p className="text-sm">
-                          Revisar estado mecánico de flota pesada — el {pctTruck.toFixed(0)}% de los camiones
+                          Revisar estado mecánico de flota pesada: el {pctTruck.toFixed(0)}% de los camiones
                           tiene consumo que supera en más del 15% la predicción del modelo.
                         </p>
                       </div>
@@ -304,8 +304,8 @@ export default function Predicciones() {
                       <AlertTriangle className="h-5 w-5 text-orange-500 shrink-0 mt-0.5" />
                       <div className="flex-1">
                         <p className="text-sm">
-                          Exceso de emisiones Scope 1 detectado ({excesoCo2Total.toFixed(0)} kg CO₂) —
-                          se recomienda revisión del plan de mantenimiento preventivo antes del próximo reporte RETC.
+                          Exceso de emisiones Scope 1 detectado ({excesoCo2Total.toFixed(0)} kg CO₂).
+                          Se recomienda revisar el plan de mantenimiento preventivo antes del próximo reporte RETC.
                         </p>
                       </div>
                       <Badge variant="secondary" className="bg-orange-100 text-orange-800">Media</Badge>

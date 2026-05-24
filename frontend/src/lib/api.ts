@@ -789,6 +789,49 @@ export async function downloadUtilityConsumptionReport(
   return { blob, filename };
 }
 
+export async function downloadResourceReport(
+  resourceCode: string,
+  options: {
+    periodType: UtilityReportPeriodType;
+    year?: number;
+    month?: number;
+    startDate?: string;
+    endDate?: string;
+  }
+): Promise<{ blob: Blob; filename: string }> {
+  const token = getToken();
+  const headers = new Headers();
+  if (token) headers.set("Authorization", `Bearer ${token}`);
+
+  const response = await fetch(
+    `${API_BASE_URL}${withQuery(`/resources/${resourceCode}/report.pdf`, {
+      period_type: options.periodType,
+      year: options.year,
+      month: options.month,
+      start_date: options.startDate,
+      end_date: options.endDate,
+    })}`,
+    { headers }
+  );
+
+  if (!response.ok) {
+    let message = "No se pudo generar el reporte PDF.";
+    try {
+      const payload = await response.json();
+      message = payload?.detail ?? message;
+    } catch {
+      // Mantener mensaje por defecto.
+    }
+    throw new Error(message);
+  }
+
+  const blob = await response.blob();
+  const disposition = response.headers.get("content-disposition") ?? "";
+  const matched = disposition.match(/filename=([^;]+)/i);
+  const filename = matched ? matched[1].replace(/"/g, "") : `reporte_${resourceCode}.pdf`;
+  return { blob, filename };
+}
+
 async function exportBlob(path: string): Promise<Blob> {
   const token = getToken();
   const headers = new Headers();

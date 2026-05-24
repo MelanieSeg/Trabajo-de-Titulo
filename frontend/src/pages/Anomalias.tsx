@@ -124,7 +124,7 @@ export default function Anomalias() {
         {/* ── Lista anomalías agua/electricidad ── */}
         <Card>
           <CardHeader>
-            <CardTitle className="text-base">Anomalías Detectadas — Energía y Agua</CardTitle>
+            <CardTitle className="text-base">Anomalías Detectadas: Energía y Agua</CardTitle>
           </CardHeader>
           <CardContent className="space-y-3">
             {anomalies.length === 0 && (
@@ -137,7 +137,7 @@ export default function Anomalias() {
                   <cfg.icon className={`h-5 w-5 shrink-0 mt-0.5 ${cfg.color}`} />
                   <div className="flex-1 min-w-0">
                     <p className="text-sm font-medium">{anomaly.type}</p>
-                    <p className="text-xs text-muted-foreground">{anomaly.area} — {anomaly.date}</p>
+                    <p className="text-xs text-muted-foreground">{anomaly.area} · {anomaly.date}</p>
                     <p className="text-xs font-mono mt-1">{anomaly.value}</p>
                     <p className="text-xs text-muted-foreground mt-1">{anomaly.description}</p>
                   </div>
@@ -165,7 +165,7 @@ export default function Anomalias() {
           <>
             <div className="flex items-center gap-2 pt-2">
               <Fuel className="h-5 w-5 text-orange-500" />
-              <h3 className="font-semibold text-foreground">Anomalías Detectadas por IA — Flota de Combustible</h3>
+              <h3 className="font-semibold text-foreground">Anomalías Detectadas por IA: Flota de Combustible</h3>
               <Badge variant="secondary" className="bg-orange-100 text-orange-800">
                 Modelo Random Forest · err.rel 6.13%
               </Badge>
@@ -211,7 +211,7 @@ export default function Anomalias() {
                   <Fuel className="h-4 w-4 text-orange-500" />
                   Detalle de Ineficiencias de Flota
                   <span className="text-xs font-normal text-muted-foreground ml-1">
-                    — desvío sobre predicción del modelo IA
+                    (desvío sobre predicción del modelo)
                   </span>
                 </CardTitle>
               </CardHeader>
