@@ -90,6 +90,7 @@ export default function PrediccionesCombustible() {
   const [showTxForm,   setShowTxForm]   = useState(false);
   const [savingTx,     setSavingTx]     = useState(false);
   const [pagHist,      setPagHist]      = useState(1);
+  const [pagTx,        setPagTx]        = useState(1);
   const [txForm,       setTxForm]       = useState<{
     vehicle_id: string; vehicle_cat: string; fuel_type: string;
     fecha: string; dist_km: string; fuel_liters_real: string;
@@ -115,6 +116,7 @@ export default function PrediccionesCombustible() {
   });
 
   const HIST_PAGE_SIZE = 10;
+  const TX_PAGE_SIZE   = 10;
 
   const cargarHistorial = useCallback(() => {
     getFuelHistorial(50).then((data) => { setHistorial(data); setPagHist(1); }).catch(() => {});
@@ -150,6 +152,7 @@ export default function PrediccionesCombustible() {
       await queryClient.invalidateQueries({ queryKey: ["analisis-flota"] });
       await queryClient.invalidateQueries({ queryKey: ["consumo-mensual-flota"] });
       refetchTx();
+      setPagTx(1);
       toast.success(`Transacción de ${payload.vehicle_id} registrada`);
       setTxForm((f) => ({ ...f, vehicle_id: "", dist_km: "", fuel_liters_real: "", notas: "" }));
       setShowTxForm(false);
@@ -261,7 +264,7 @@ export default function PrediccionesCombustible() {
                       Faltan {modeloEstado.min_registros_requeridos - modeloEstado.n_transacciones_disponibles} transacciones
                     </span>
                   )}
-                  <Link to="/predicciones-ml">
+                  <Link to="/predicciones">
                     <Button size="sm" variant="outline">
                       <RefreshCw className="h-4 w-4 mr-2" />
                       Actualizar en Predicciones ML
@@ -695,55 +698,104 @@ export default function PrediccionesCombustible() {
               <p className="p-4 text-sm text-muted-foreground text-center">
                 No hay transacciones registradas aún. Usa el formulario de arriba para agregar la primera.
               </p>
-            ) : (
-              <div className="overflow-x-auto">
-                <table className="w-full text-sm">
-                  <thead>
-                    <tr className="border-b bg-muted/30 text-muted-foreground text-xs">
-                      <th className="p-3 text-left">Fecha</th>
-                      <th className="p-3 text-left">Patente</th>
-                      <th className="p-3 text-left">Tipo</th>
-                      <th className="p-3 text-right">Distancia (km)</th>
-                      <th className="p-3 text-right">Litros reales</th>
-                      <th className="p-3 text-right">km/L</th>
-                      <th className="p-3 text-left">Notas</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {transacciones.map((t) => (
-                      <tr key={t.id} className="border-b last:border-0 hover:bg-muted/20 transition-colors">
-                        <td className="p-3 text-muted-foreground whitespace-nowrap text-xs">
-                          {new Date(t.fecha).toLocaleDateString("es-CL")}
-                        </td>
-                        <td className="p-3">
-                          <span className="font-mono text-xs font-medium">{t.vehicle_id}</span>
-                          <span className="ml-1 text-xs text-muted-foreground">({t.vehicle_cat})</span>
-                        </td>
-                        <td className="p-3">
-                          <Badge variant="outline" className="text-xs">
-                            {t.fuel_type === "D" ? "Diésel" : "Gas Oil"}
-                          </Badge>
-                        </td>
-                        <td className="p-3 text-right font-medium">
-                          {t.dist_km.toLocaleString("es-CL")}
-                        </td>
-                        <td className="p-3 text-right">
-                          {t.fuel_liters_real != null
-                            ? <span className="font-medium">{t.fuel_liters_real.toFixed(1)} L</span>
-                            : <span className="text-muted-foreground text-xs italic">no registrado</span>}
-                        </td>
-                        <td className="p-3 text-right text-muted-foreground">
-                          {t.km_per_liter != null ? t.km_per_liter.toFixed(1) : "N/D"}
-                        </td>
-                        <td className="p-3 text-xs text-muted-foreground max-w-[180px] truncate">
-                          {t.notas || "Sin notas"}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
+            ) : (() => {
+              const totalPagesTx = Math.ceil(transacciones.length / TX_PAGE_SIZE);
+              const txPaginadas  = transacciones.slice(
+                (pagTx - 1) * TX_PAGE_SIZE,
+                pagTx * TX_PAGE_SIZE,
+              );
+              return (
+                <>
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-sm">
+                      <thead>
+                        <tr className="border-b bg-muted/30 text-muted-foreground text-xs">
+                          <th className="p-3 text-left">Fecha</th>
+                          <th className="p-3 text-left">Patente</th>
+                          <th className="p-3 text-left">Tipo</th>
+                          <th className="p-3 text-right">Distancia (km)</th>
+                          <th className="p-3 text-right">Litros reales</th>
+                          <th className="p-3 text-right">km/L</th>
+                          <th className="p-3 text-left">Notas</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {txPaginadas.map((t) => (
+                          <tr key={t.id} className="border-b last:border-0 hover:bg-muted/20 transition-colors">
+                            <td className="p-3 text-muted-foreground whitespace-nowrap text-xs">
+                              {new Date(t.fecha).toLocaleDateString("es-CL")}
+                            </td>
+                            <td className="p-3">
+                              <span className="font-mono text-xs font-medium">{t.vehicle_id}</span>
+                              <span className="ml-1 text-xs text-muted-foreground">({t.vehicle_cat})</span>
+                            </td>
+                            <td className="p-3">
+                              <Badge variant="outline" className="text-xs">
+                                {t.fuel_type === "D" ? "Diésel" : "Gas Oil"}
+                              </Badge>
+                            </td>
+                            <td className="p-3 text-right font-medium">
+                              {t.dist_km.toLocaleString("es-CL")}
+                            </td>
+                            <td className="p-3 text-right">
+                              {t.fuel_liters_real != null
+                                ? <span className="font-medium">{t.fuel_liters_real.toFixed(1)} L</span>
+                                : <span className="text-muted-foreground text-xs italic">no registrado</span>}
+                            </td>
+                            <td className="p-3 text-right text-muted-foreground">
+                              {t.km_per_liter != null ? t.km_per_liter.toFixed(1) : "N/D"}
+                            </td>
+                            <td className="p-3 text-xs text-muted-foreground max-w-[180px] truncate">
+                              {t.notas || "Sin notas"}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+
+                  {totalPagesTx > 1 && (
+                    <div className="flex items-center justify-between px-4 py-3 border-t text-xs text-muted-foreground">
+                      <span>
+                        Página {pagTx} de {totalPagesTx} · mostrando {txPaginadas.length} de {transacciones.length}
+                      </span>
+                      <div className="flex items-center gap-1">
+                        <button
+                          type="button"
+                          className="rounded px-2.5 py-1 border hover:bg-muted disabled:opacity-40 transition-colors"
+                          disabled={pagTx === 1}
+                          onClick={() => setPagTx((p) => p - 1)}
+                        >
+                          ← Anterior
+                        </button>
+                        {Array.from({ length: totalPagesTx }, (_, i) => i + 1).map((p) => (
+                          <button
+                            key={p}
+                            type="button"
+                            className={`rounded px-2.5 py-1 border transition-colors ${
+                              p === pagTx
+                                ? "bg-primary text-primary-foreground border-primary"
+                                : "hover:bg-muted"
+                            }`}
+                            onClick={() => setPagTx(p)}
+                          >
+                            {p}
+                          </button>
+                        ))}
+                        <button
+                          type="button"
+                          className="rounded px-2.5 py-1 border hover:bg-muted disabled:opacity-40 transition-colors"
+                          disabled={pagTx === totalPagesTx}
+                          onClick={() => setPagTx((p) => p + 1)}
+                        >
+                          Siguiente →
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </>
+              );
+            })()}
           </CardContent>
         </Card>
 
