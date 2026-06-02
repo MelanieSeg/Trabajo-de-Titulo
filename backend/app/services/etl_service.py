@@ -13,6 +13,7 @@ from app.db.models import (
     Company,
     ETLJob,
     Facility,
+    FuelTransaction,
     MonthlyConsumption,
     ResourceAreaDistribution,
     ResourceMonthlyConsumption,
@@ -738,6 +739,117 @@ def run_etl_from_csv(db: Session, csv_path: str, source_filename: str | None = N
         activity_type="etl",
         message=f"ETL ejecutado sobre {source_name}",
         metadata={"rows_processed": processed, "rows_rejected": rejected},
+    )
+
+    db.flush()
+    return job
+
+
+FUEL_REQUIRED_COLUMNS = {"vehicle_id", "vehicle_cat", "fuel_type", "fecha", "dist_km", "precio_litro_clp"}
+FUEL_VALID_VEHICLE_CATS = {"Van", "Truck", "Bus", "Car"}
+FUEL_VALID_FUEL_TYPES = {"D", "G"}
+
+
+def run_etl_from_fuel_csv(db: Session, csv_path: str, source_filename: str | None = None) -> ETLJob:
+    started_at = datetime.now(timezone.utc)
+    path = Path(csv_path)
+    if not path.exists():
+        raise FileNotFoundError(f"No se encontró archivo CSV: {csv_path}")
+
+    source_name = source_filename or path.name
+    df = pd.read_csv(path)
+    df.columns = [c.strip().lower() for c in df.columns]
+
+    missing = FUEL_REQUIRED_COLUMNS - set(df.columns)
+    if missing:
+        raise ValueError(
+            f"CSV inválido. Faltan columnas: {', '.join(sorted(missing))}. "
+            f"Descarga la plantilla para ver el formato esperado."
+        )
+
+    initial_rows = len(df)
+
+    for col in ("vehicle_id", "vehicle_cat", "fuel_type"):
+        df[col] = df[col].astype("string").str.strip()
+    df["vehicle_id"] = df["vehicle_id"].str.upper()
+
+    df = df.dropna(subset=list(FUEL_REQUIRED_COLUMNS))
+    df = df[df["vehicle_cat"].isin(FUEL_VALID_VEHICLE_CATS)]
+    df = df[df["fuel_type"].isin(FUEL_VALID_FUEL_TYPES)]
+
+    for col in ("dist_km", "fuel_liters_real", "km_per_liter", "precio_litro_clp"):
+        if col in df.columns:
+            df[col] = pd.to_numeric(df[col], errors="coerce")
+
+    df = df.dropna(subset=["dist_km", "precio_litro_clp"])
+    df = df[(df["dist_km"] > 0) & (df["precio_litro_clp"] > 0)]
+    df["fecha"] = pd.to_datetime(df["fecha"], errors="coerce")
+    df = df.dropna(subset=["fecha"])
+
+    if df.empty:
+        raise ValueError(
+            "CSV sin filas válidas tras la limpieza. "
+            "Verifica que vehicle_cat sea Van/Truck/Bus/Car, fuel_type sea D/G, "
+            "y que fecha tenga formato YYYY-MM-DD."
+        )
+
+    rejected = initial_rows - len(df)
+    records = []
+    for row in df.itertuples(index=False):
+        fuel_liters = None
+        if "fuel_liters_real" in df.columns:
+            v = getattr(row, "fuel_liters_real", None)
+            if v is not None and not pd.isna(v) and float(v) > 0:
+                fuel_liters = float(v)
+
+        km_per_liter = None
+        if "km_per_liter" in df.columns:
+            v = getattr(row, "km_per_liter", None)
+            if v is not None and not pd.isna(v) and float(v) > 0:
+                km_per_liter = float(v)
+
+        notas = None
+        if "notas" in df.columns:
+            v = getattr(row, "notas", None)
+            if v is not None and str(v).strip().lower() not in ("", "nan", "none"):
+                notas = str(v).strip()[:255]
+
+        fecha_dt = row.fecha.to_pydatetime()
+        if fecha_dt.tzinfo is None:
+            fecha_dt = fecha_dt.replace(tzinfo=timezone.utc)
+
+        records.append(FuelTransaction(
+            vehicle_id=str(row.vehicle_id),
+            vehicle_cat=str(row.vehicle_cat),
+            fuel_type=str(row.fuel_type),
+            fecha=fecha_dt,
+            dist_km=float(row.dist_km),
+            fuel_liters_real=fuel_liters,
+            km_per_liter=km_per_liter,
+            precio_litro_clp=float(row.precio_litro_clp),
+            notas=notas,
+        ))
+
+    db.bulk_save_objects(records)
+    db.flush()
+
+    finished_at = datetime.now(timezone.utc)
+    job = ETLJob(
+        source_filename=source_name,
+        rows_processed=len(records),
+        rows_rejected=rejected,
+        status="completed",
+        notes=f"Importación de transacciones de flota: {len(records)} registros insertados, {rejected} rechazados",
+        started_at=started_at,
+        finished_at=finished_at,
+    )
+    db.add(job)
+
+    log_activity(
+        db,
+        activity_type="etl",
+        message=f"Importación de transacciones de flota desde {source_name}",
+        metadata={"rows_processed": len(records), "rows_rejected": rejected},
     )
 
     db.flush()
