@@ -626,7 +626,7 @@ def exportar_retc(
 
 @router.get("/transacciones", response_model=list[FuelTransactionResponse])
 def list_transacciones(
-    limit: int = 50,
+    limit: int = 500,
     db: Session = Depends(get_db),
 ) -> list[FuelTransactionResponse]:
     return (
