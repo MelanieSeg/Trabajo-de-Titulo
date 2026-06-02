@@ -17,6 +17,7 @@ from pydantic import BaseModel, Field
 from sklearn.compose import ColumnTransformer
 from sklearn.ensemble import RandomForestRegressor
 from sklearn.impute import SimpleImputer
+from sklearn.model_selection import train_test_split
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import OrdinalEncoder
 from sqlalchemy import func
@@ -108,7 +109,7 @@ class FuelPredictionRequest(BaseModel):
     fuel_type: Literal["D", "G"] = Field(..., description="D=Diésel, G=Gas Oil")
     dist_km: float = Field(..., gt=0)
     km_per_liter: Optional[float] = Field(default=None, gt=0)
-    precio_litro_clp: float = Field(default=1050.0, gt=0)
+    precio_litro_clp: float = Field(..., gt=0, description="Precio actual por litro en CLP (varía mensualmente, no se usa valor por defecto)")
 
 
 class EscenarioOptimizacion(BaseModel):
@@ -167,7 +168,7 @@ class FuelTransactionCreate(BaseModel):
     dist_km: float = Field(..., gt=0)
     fuel_liters_real: Optional[float] = Field(default=None, gt=0)
     km_per_liter: Optional[float] = Field(default=None, gt=0)
-    precio_litro_clp: float = Field(default=1050.0, gt=0)
+    precio_litro_clp: float = Field(..., gt=0, description="Precio efectivo pagado por litro en CLP")
     notas: Optional[str] = Field(default=None, max_length=255)
 
 
@@ -308,8 +309,8 @@ def predict_fuel(
         km_per_liter_usado=km_pl_efectivo,
         km_per_liter_fue_imputado=fue_imputado,
         precio_litro_clp=payload.precio_litro_clp,
-        model_name="Random Forest + litros_teoricos (Sprint 3 · err.rel 6.13%)",
-        error_rel_pct=6.13,
+        model_name=f"Random Forest + litros_teoricos (err.rel {_model_meta.get('error_relativo_empresa_pct', 6.13):.2f}%)",
+        error_rel_pct=_model_meta.get("error_relativo_empresa_pct", 6.13),
         optimizacion=optimizacion,
     )
 
@@ -354,7 +355,7 @@ def analisis_flota(db: Session = Depends(get_db)) -> AnalisisFlotaResponse:
             reduccion_co2_proyectada_kg=0.0,
             anomalias=[],
             consumo_por_periodo=[],
-            modelo_info={"nombre": "Random Forest + litros_teoricos", "error_relativo_pct": 6.13},
+            modelo_info={"nombre": "Random Forest + litros_teoricos", "error_relativo_pct": _model_meta.get("error_relativo_empresa_pct", 6.13)},
         )
 
     anomalias: list[AnomaliaFlota] = []
@@ -437,8 +438,8 @@ def analisis_flota(db: Session = Depends(get_db)) -> AnalisisFlotaResponse:
             real_litros=round(real_total, 2),
             predicho_litros=round(pred_total, 2),
             desvio_pct=round(desvio, 1),
-            co2_real_kg=round(real_total * 2.5, 2),
-            co2_predicho_kg=round(pred_total * 2.5, 2),
+            co2_real_kg=round(p["diesel_real"] * 2.68 + p["gasoil_real"] * 1.89, 2),
+            co2_predicho_kg=round(p["diesel_pred"] * 2.68 + p["gasoil_pred"] * 1.89, 2),
             diesel_real_l=round(p["diesel_real"], 2) if p["diesel_real"] > 0 else None,
             gasoil_real_l=round(p["gasoil_real"], 2) if p["gasoil_real"] > 0 else None,
             diesel_pred_l=round(p["diesel_pred"], 2) if p["diesel_pred"] > 0 else None,
@@ -458,7 +459,7 @@ def analisis_flota(db: Session = Depends(get_db)) -> AnalisisFlotaResponse:
         consumo_por_periodo=consumo_por_periodo,
         modelo_info={
             "nombre": "Random Forest + litros_teoricos",
-            "error_relativo_pct": 6.13,
+            "error_relativo_pct": _model_meta.get("error_relativo_empresa_pct", 6.13),
             "registros_entrenamiento": 5795,
             "registros_flota_analizados": len(transacciones),
             "total_transacciones_sistema": n_total,
@@ -801,13 +802,18 @@ def reentrenar_modelo(
 
     df_empresa = pd.DataFrame(rows_limpios)
 
-    # 5. Combinar: base + empresa × 3 (peso triple a datos propios de la empresa)
-    df_combinado = pd.concat(
-        [df_base_clean, pd.concat([df_empresa] * 3, ignore_index=True)],
+    # 5. Separar datos de empresa: 80% entrenamiento / 20% evaluación honesta
+    df_emp_train, df_emp_test = train_test_split(
+        df_empresa, test_size=0.2, random_state=42
+    )
+
+    # Construir dataset de entrenamiento: base + empresa_train × 3
+    df_train_combinado = pd.concat(
+        [df_base_clean, pd.concat([df_emp_train] * 3, ignore_index=True)],
         ignore_index=True,
     )
 
-    # 6. Construir y entrenar pipeline sin year
+    # 6. Construir pipeline
     preprocesador = ColumnTransformer(
         transformers=[
             ("num", SimpleImputer(strategy="median"), FEATURES_NUM),
@@ -825,18 +831,25 @@ def reentrenar_modelo(
         )),
     ])
 
-    X = df_combinado[FEATURES]
-    y = df_combinado["log_fuel"]
-    pipeline.fit(X, y)
+    # Entrenamiento temporal para obtener métricas honestas
+    pipeline.fit(df_train_combinado[FEATURES], df_train_combinado["log_fuel"])
 
-    # 7. Evaluar sobre transacciones reales de empresa (error relativo)
-    y_pred_log = pipeline.predict(df_empresa[FEATURES])
+    # 7. Evaluar exclusivamente sobre el 20% retenido (datos no vistos durante fit)
+    y_pred_log = pipeline.predict(df_emp_test[FEATURES])
     y_pred     = np.expm1(y_pred_log)
-    y_real     = np.expm1(df_empresa["log_fuel"].values)
+    y_real     = np.expm1(df_emp_test["log_fuel"].values)
     mae        = float(np.mean(np.abs(y_real - y_pred)))
     error_rel  = float(mae / y_real.mean() * 100) if y_real.mean() > 0 else 0.0
+    n_test     = len(df_emp_test)
 
-    # 8. Guardar modelo y metadatos
+    # 8. Reentrenar modelo de producción con el 100% de los datos disponibles
+    df_combinado = pd.concat(
+        [df_base_clean, pd.concat([df_empresa] * 3, ignore_index=True)],
+        ignore_index=True,
+    )
+    pipeline.fit(df_combinado[FEATURES], df_combinado["log_fuel"])
+
+    # 9. Guardar modelo y metadatos
     joblib.dump(pipeline, _MODEL_PATH)
     meta = {
         "uses_year":                   False,
@@ -845,6 +858,7 @@ def reentrenar_modelo(
         "n_empresa":                   n_empresa,
         "n_limpios":                   n_limpios,
         "n_excluidos":                 n_excluidos,
+        "n_test":                      n_test,
         "n_total_entrenamiento":       len(df_combinado),
         "error_relativo_empresa_pct":  round(error_rel, 2),
         "mae_empresa_L":               round(mae, 1),
@@ -853,7 +867,7 @@ def reentrenar_modelo(
     with open(_MODEL_META_PATH, "w", encoding="utf-8") as f:
         json.dump(meta, f, indent=2)
 
-    # 9. Recargar en memoria
+    # 10. Recargar en memoria
     _model      = pipeline
     _model_meta = meta
 
@@ -862,7 +876,7 @@ def reentrenar_modelo(
         "message": (
             f"Modelo reentrenado con {n_limpios} transacciones limpias de empresa "
             f"({n_excluidos} anómalas excluidas) + {len(df_base)} registros base. "
-            f"Error relativo sobre datos propios: {error_rel:.1f}%."
+            f"Error relativo (evaluado sobre {n_test} registros retenidos): {error_rel:.1f}%."
         ),
         **meta,
     }

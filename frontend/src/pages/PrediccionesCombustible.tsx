@@ -39,7 +39,7 @@ const CO2_FACTOR: Record<FuelPredictionRequest["fuel_type"], number> = {
 };
 
 const PRECIO_DEFAULT: Record<FuelPredictionRequest["fuel_type"] | "", number> = {
-  D: 1415, G: 1415, "": 1415,
+  D: 1549, G: 1549, "": 1549,
 };
 
 function clp(value: number) {
@@ -81,7 +81,7 @@ export default function PrediccionesCombustible() {
     dist_km:          string;
     km_per_liter:     string;
     precio_litro_clp: string;
-  }>({ vehicle_cat: "", fuel_type: "", dist_km: "", km_per_liter: "", precio_litro_clp: "1415" });
+  }>({ vehicle_cat: "", fuel_type: "", dist_km: "", km_per_liter: "", precio_litro_clp: "1549" });
 
   const [loading,      setLoading]      = useState(false);
   const [result,       setResult]       = useState<FuelPredictionResponse | null>(null);
@@ -98,7 +98,7 @@ export default function PrediccionesCombustible() {
     vehicle_id: "", vehicle_cat: "Van", fuel_type: "D",
     fecha: new Date().toISOString().slice(0, 10),
     dist_km: "", fuel_liters_real: "", km_per_liter: "",
-    precio_litro_clp: "1415", notas: "",
+    precio_litro_clp: "1549", notas: "",
   });
   const queryClient = useQueryClient();
 
@@ -143,7 +143,7 @@ export default function PrediccionesCombustible() {
         dist_km:          parseFloat(txForm.dist_km),
         fuel_liters_real: txForm.fuel_liters_real ? parseFloat(txForm.fuel_liters_real) : null,
         km_per_liter:     txForm.km_per_liter ? parseFloat(txForm.km_per_liter) : null,
-        precio_litro_clp: parseFloat(txForm.precio_litro_clp) || 1415,
+        precio_litro_clp: parseFloat(txForm.precio_litro_clp) || 1549,
         notas:            txForm.notas || null,
       };
       await createFuelTransaccion(payload);
@@ -188,7 +188,7 @@ export default function PrediccionesCombustible() {
   }
 
   function handleReset() {
-    setForm({ vehicle_cat: "", fuel_type: "", dist_km: "", km_per_liter: "", precio_litro_clp: "1415" });
+    setForm({ vehicle_cat: "", fuel_type: "", dist_km: "", km_per_liter: "", precio_litro_clp: "1549" });
     setResult(null);
     setLitrosReales("");
   }
@@ -358,7 +358,7 @@ export default function PrediccionesCombustible() {
               <div className="space-y-2">
                 <Label>Precio por litro (CLP)</Label>
                 <Input
-                  type="number" min={1} step={10} placeholder="Ej: 1415"
+                  type="number" min={1} step={10} placeholder="Ej: 1549"
                   value={form.precio_litro_clp}
                   onChange={(e) => setForm((f) => ({ ...f, precio_litro_clp: e.target.value }))}
                 />
@@ -631,7 +631,7 @@ export default function PrediccionesCombustible() {
               </div>
               <div className="space-y-1">
                 <Label className="text-xs">Combustible *</Label>
-                <Select value={txForm.fuel_type} onValueChange={(v) => setTxForm((f) => ({ ...f, fuel_type: v, precio_litro_clp: "1415" }))}>
+                <Select value={txForm.fuel_type} onValueChange={(v) => setTxForm((f) => ({ ...f, fuel_type: v, precio_litro_clp: "1549" }))}>
                   <SelectTrigger><SelectValue /></SelectTrigger>
                   <SelectContent>
                     <SelectItem value="D">Diésel</SelectItem>
