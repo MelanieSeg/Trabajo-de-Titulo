@@ -8,6 +8,7 @@ class LoginRequest(BaseModel):
     """Esquema de solicitud de login con validación de email y contraseña"""
     email: EmailStr
     password: str = Field(min_length=1, max_length=255)
+    remember_me: bool = False
 
 
 class RegisterRequest(BaseModel):

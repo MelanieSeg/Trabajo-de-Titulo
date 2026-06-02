@@ -163,6 +163,7 @@ export interface User {
 export interface LoginRequest {
   email: string;
   password: string;
+  remember_me?: boolean;
 }
 
 export interface LoginResponse {
@@ -212,6 +213,21 @@ function setUser(user: User): void {
 function getUser(): User | null {
   const user = localStorage.getItem(USER_KEY);
   return user ? JSON.parse(user) : null;
+}
+
+function isTokenExpired(): boolean {
+  const token = getToken();
+  if (!token) return true;
+  try {
+    const parts = token.split(".");
+    if (parts.length !== 3) return true;
+    const payload = JSON.parse(atob(parts[1])) as { exp?: number };
+    if (!payload.exp) return true;
+    // 30s de margen para evitar race conditions justo al borde de la expiración
+    return Date.now() / 1000 > payload.exp - 30;
+  } catch {
+    return true;
+  }
 }
 
 async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
@@ -310,7 +326,21 @@ export function logout(): void {
 }
 
 export function isAuthenticated(): boolean {
-  return getToken() !== null;
+  return getToken() !== null && !isTokenExpired();
+}
+
+export function getTokenExpiresAt(): Date | null {
+  const token = getToken();
+  if (!token) return null;
+  try {
+    const parts = token.split(".");
+    if (parts.length !== 3) return null;
+    const payload = JSON.parse(atob(parts[1])) as { exp?: number };
+    if (!payload.exp) return null;
+    return new Date(payload.exp * 1000);
+  } catch {
+    return null;
+  }
 }
 
 export function getCurrentUser(): User | null {

@@ -40,7 +40,7 @@ export default function LoginPage() {
         return;
       }
 
-      await login({ email: result.data.email, password: result.data.password });
+      await login({ email: result.data.email, password: result.data.password, remember_me: rememberMe });
       toast({
         title: "Éxito",
         description: "Sesión iniciada correctamente",

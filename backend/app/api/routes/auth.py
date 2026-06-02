@@ -1,4 +1,4 @@
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy.orm import Session
@@ -95,11 +95,13 @@ def login(
     user.last_login_at = datetime.now(timezone.utc)
     db.commit()
 
-    # Crear token de acceso
+    # Crear token de acceso (30 días si "mantener sesión", 24h por defecto)
+    expires_delta = timedelta(days=30) if credentials.remember_me else None
     access_token = create_access_token(
         user_id=user.id,
         email=user.email,
         role=user.role,
+        expires_delta=expires_delta,
     )
 
     # Preparar respuesta de usuario (excluir datos sensibles)
