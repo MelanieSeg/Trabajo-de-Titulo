@@ -8,6 +8,7 @@ import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useOperationsOverview } from "@/hooks/useOperationsOverview";
+import { UsuariosSkeleton } from "@/components/skeletons/PageSkeleton";
 import { createOperationsUser } from "@/lib/api";
 import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
@@ -21,6 +22,8 @@ export default function UsuariosPage() {
   const [creating, setCreating] = useState(false);
 
   const users = data?.users ?? [];
+
+  if (isLoading) return <UsuariosSkeleton />;
 
   const onCreateUser = async () => {
     if (!name.trim() || !email.trim()) {
@@ -66,7 +69,6 @@ export default function UsuariosPage() {
           </Badge>
         </div>
 
-        {isLoading && <Card className="p-4 text-sm text-muted-foreground">Cargando usuarios...</Card>}
         {isError && <Card className="p-4 text-sm text-destructive">No se pudieron cargar usuarios.</Card>}
 
         <Card>

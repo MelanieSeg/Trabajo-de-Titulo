@@ -4,10 +4,13 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
 import { Badge } from "@/components/ui/badge";
 import { useOperationsOverview } from "@/hooks/useOperationsOverview";
+import { ObjetivosSkeleton } from "@/components/skeletons/PageSkeleton";
 
 export default function Objetivos() {
   const { data, isLoading, isError } = useOperationsOverview();
   const goals = data?.goals ?? [];
+
+  if (isLoading) return <ObjetivosSkeleton />;
 
   return (
     <DashboardLayout>
@@ -17,7 +20,6 @@ export default function Objetivos() {
           <p className="text-sm text-muted-foreground">Seguimiento de metas de eficiencia y sostenibilidad</p>
         </div>
 
-        {isLoading && <Card className="p-4 text-sm text-muted-foreground">Cargando objetivos...</Card>}
         {isError && <Card className="p-4 text-sm text-destructive">No se pudieron cargar objetivos.</Card>}
 
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">

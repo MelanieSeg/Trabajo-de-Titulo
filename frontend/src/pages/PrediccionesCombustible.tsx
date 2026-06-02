@@ -20,6 +20,7 @@ import {
   type FuelTransactionCreate, type FuelTransactionItem, type ModeloEstado,
 } from "@/lib/api";
 import { Link } from "react-router-dom";
+import { ModeloEstadoSkeleton, TransaccionesSkeleton } from "@/components/skeletons/PageSkeleton";
 
 const VEHICLE_LABELS: Record<FuelPredictionRequest["vehicle_cat"], string> = {
   Van:   "Van / Furgoneta",
@@ -103,13 +104,13 @@ export default function PrediccionesCombustible() {
   });
   const queryClient = useQueryClient();
 
-  const { data: transacciones = [], refetch: refetchTx } = useQuery<FuelTransactionItem[]>({
+  const { data: transacciones = [], isLoading: isLoadingTx, refetch: refetchTx } = useQuery<FuelTransactionItem[]>({
     queryKey: ["fuel-transacciones"],
     queryFn: () => getFuelTransacciones(50),
     staleTime: 1000 * 60 * 2,
   });
 
-  const { data: modeloEstado } = useQuery<ModeloEstado>({
+  const { data: modeloEstado, isLoading: isLoadingModelo } = useQuery<ModeloEstado>({
     queryKey: ["combustible-modelo-estado"],
     queryFn: getModeloEstado,
     staleTime: 1000 * 60 * 5,
@@ -221,7 +222,7 @@ export default function PrediccionesCombustible() {
         </div>
 
         {/* ── Estado del modelo ── */}
-        {modeloEstado && (
+        {isLoadingModelo ? <ModeloEstadoSkeleton /> : modeloEstado && (
           <Card className={modeloEstado.trained_with_company_data
             ? "border-green-500/30 bg-green-500/5"
             : "border-orange-500/30 bg-orange-500/5"
@@ -683,6 +684,7 @@ export default function PrediccionesCombustible() {
         </Card>
 
         {/* Transacciones reales registradas */}
+        {isLoadingTx ? <TransaccionesSkeleton /> : (
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2 text-base">
@@ -798,6 +800,7 @@ export default function PrediccionesCombustible() {
             })()}
           </CardContent>
         </Card>
+        )}
 
         {/* Historial de predicciones */}
         {historial.length > 0 && (() => {

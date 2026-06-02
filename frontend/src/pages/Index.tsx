@@ -11,6 +11,7 @@ import { EnergyMetricsCarousel } from "@/components/EnergyMetricsCarousel";
 import { Card } from "@/components/ui/card";
 import { useDashboardData } from "@/hooks/useDashboardData";
 import { useOperationsOverview } from "@/hooks/useOperationsOverview";
+import { DashboardSkeleton } from "@/components/skeletons/PageSkeleton";
 
 const defaultData = {
   summary: {
@@ -41,11 +42,13 @@ const defaultData = {
 const Index = () => {
   const {
     data: dashboardData,
+    isLoading: isDashboardLoading,
     isError: isDashboardError,
     error: dashboardError,
   } = useDashboardData(12);
   const {
     data: operationsData,
+    isLoading: isOperationsLoading,
     isError: isOperationsError,
     error: operationsError,
   } = useOperationsOverview(12);
@@ -58,11 +61,14 @@ const Index = () => {
     label: item.label,
     unit: item.unit,
   }));
+  const isLoading = isDashboardLoading || isOperationsLoading;
   const isError = isDashboardError || isOperationsError;
   const errorMessage =
     (operationsError instanceof Error && operationsError.message) ||
     (dashboardError instanceof Error && dashboardError.message) ||
     "intenta nuevamente";
+
+  if (isLoading) return <DashboardSkeleton />;
 
   return (
     <DashboardLayout>

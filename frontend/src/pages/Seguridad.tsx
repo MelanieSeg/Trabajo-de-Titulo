@@ -3,6 +3,7 @@ import { DashboardLayout } from "@/components/DashboardLayout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { useOperationsOverview } from "@/hooks/useOperationsOverview";
+import { SeguridadSkeleton } from "@/components/skeletons/PageSkeleton";
 
 function relativeTime(input: string | null): string {
   if (!input) return "N/D";
@@ -19,6 +20,8 @@ function relativeTime(input: string | null): string {
 export default function Seguridad() {
   const { data, isLoading, isError } = useOperationsOverview();
   const sessions = data?.security.sessions ?? [];
+
+  if (isLoading) return <SeguridadSkeleton />;
   const logs = data?.security.audit ?? [];
 
   return (
@@ -29,7 +32,6 @@ export default function Seguridad() {
           <p className="text-sm text-muted-foreground">Gestión de acceso, sesiones y registros de auditoría</p>
         </div>
 
-        {isLoading && <Card className="p-4 text-sm text-muted-foreground">Cargando eventos de seguridad...</Card>}
         {isError && <Card className="p-4 text-sm text-destructive">No se pudieron cargar eventos de seguridad.</Card>}
 
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">

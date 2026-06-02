@@ -7,6 +7,7 @@ import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useOperationsOverview } from "@/hooks/useOperationsOverview";
+import { ConfiguracionSkeleton } from "@/components/skeletons/PageSkeleton";
 import { updateOperationsSettings } from "@/lib/api";
 import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
@@ -34,6 +35,8 @@ export default function Configuracion() {
     setWaterThreshold(data.settings.water_threshold_pct);
     setVolatilityThreshold(data.settings.volatility_threshold_pct);
   }, [data?.settings]);
+
+  if (isLoading) return <ConfiguracionSkeleton />;
 
   const saveSettings = async () => {
     try {
@@ -65,7 +68,6 @@ export default function Configuracion() {
           <p className="text-sm text-muted-foreground">Preferencias generales del sistema</p>
         </div>
 
-        {isLoading && <Card className="p-4 text-sm text-muted-foreground">Cargando configuración...</Card>}
         {isError && <Card className="p-4 text-sm text-destructive">No se pudo cargar configuración.</Card>}
 
         <Card>

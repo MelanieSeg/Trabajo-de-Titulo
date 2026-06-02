@@ -4,6 +4,7 @@ import { DashboardLayout } from "@/components/DashboardLayout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { useOperationsOverview } from "@/hooks/useOperationsOverview";
+import { MapaSkeleton } from "@/components/skeletons/PageSkeleton";
 
 const MAP_NODE_LAYOUT = [
   { x: 16, y: 24 },
@@ -21,6 +22,8 @@ function clamp(value: number, min: number, max: number): number {
 export default function MapaConsumo() {
   const { data, isLoading, isError } = useOperationsOverview();
   const zones = data?.map ?? [];
+
+  if (isLoading) return <MapaSkeleton />;
   const energyCatalog = data?.energy_catalog ?? [];
   const resourceLabelMap = useMemo(
     () =>
@@ -104,7 +107,6 @@ export default function MapaConsumo() {
           <p className="text-sm text-muted-foreground">Distribución del consumo por instalación</p>
         </div>
 
-        {isLoading && <Card className="p-4 text-sm text-muted-foreground">Cargando mapa de consumo...</Card>}
         {isError && <Card className="p-4 text-sm text-destructive">No se pudo cargar el mapa.</Card>}
 
         <Card>

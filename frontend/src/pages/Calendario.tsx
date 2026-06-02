@@ -5,12 +5,15 @@ import { Calendar } from "@/components/ui/calendar";
 import { Badge } from "@/components/ui/badge";
 import { useMemo, useState } from "react";
 import { useOperationsOverview } from "@/hooks/useOperationsOverview";
+import { CalendarioSkeleton } from "@/components/skeletons/PageSkeleton";
 
 export default function CalendarioPage() {
   const [date, setDate] = useState<Date | undefined>(new Date());
   const { data, isLoading, isError } = useOperationsOverview();
 
   const events = data?.calendar ?? [];
+
+  if (isLoading) return <CalendarioSkeleton />;
 
   const selectedDayEvents = useMemo(() => {
     if (!date) return events;
@@ -26,7 +29,6 @@ export default function CalendarioPage() {
           <p className="text-sm text-muted-foreground">Eventos, mantenimientos y fechas clave</p>
         </div>
 
-        {isLoading && <Card className="p-4 text-sm text-muted-foreground">Cargando eventos...</Card>}
         {isError && <Card className="p-4 text-sm text-destructive">No se pudieron cargar eventos.</Card>}
 
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">

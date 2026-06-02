@@ -17,6 +17,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
 import { DateRangeFilter } from "@/components/DateRangeFilter";
 import { useOperationsOverview } from "@/hooks/useOperationsOverview";
+import { MetricasSkeleton } from "@/components/skeletons/PageSkeleton";
 import { useState } from "react";
 
 const iconMap: Record<string, typeof Zap> = {
@@ -54,6 +55,8 @@ export default function Metricas() {
     };
   });
 
+  if (isLoading) return <MetricasSkeleton />;
+
   return (
     <DashboardLayout>
       <div className="space-y-6">
@@ -64,7 +67,6 @@ export default function Metricas() {
 
         <DateRangeFilter selectedMonths={months} onMonthsChange={setMonths} />
 
-        {isLoading && <Card className="p-4 text-sm text-muted-foreground">Cargando métricas...</Card>}
         {isError && <Card className="p-4 text-sm text-destructive">No se pudieron cargar métricas.</Card>}
 
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">

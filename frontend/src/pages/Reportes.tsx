@@ -4,6 +4,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { useOperationsOverview } from "@/hooks/useOperationsOverview";
+import { ReportesSkeleton } from "@/components/skeletons/PageSkeleton";
 import { exportConsumptionCsv, generateMonthlyReport } from "@/lib/api";
 import { useState } from "react";
 import { toast } from "sonner";
@@ -24,6 +25,8 @@ export default function Reportes() {
   const queryClient = useQueryClient();
 
   const reports = data?.reports ?? [];
+
+  if (isLoading) return <ReportesSkeleton />;
 
   const handleGenerateReport = async () => {
     try {
@@ -64,7 +67,6 @@ export default function Reportes() {
           </Button>
         </div>
 
-        {isLoading && <Card className="p-4 text-sm text-muted-foreground">Cargando reportes...</Card>}
         {isError && <Card className="p-4 text-sm text-destructive">No se pudieron cargar reportes.</Card>}
 
         <Card>

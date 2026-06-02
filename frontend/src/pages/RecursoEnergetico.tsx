@@ -49,6 +49,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { useResourceOverview } from "@/hooks/useResourceOverview";
+import { RecursoSkeleton } from "@/components/skeletons/PageSkeleton";
 import { downloadResourceReport, UtilityReportPeriodType } from "@/lib/api";
 import { toast } from "sonner";
 
@@ -243,6 +244,8 @@ export default function RecursoEnergetico() {
     );
   }
 
+  if (isLoading) return <RecursoSkeleton />;
+
   return (
     <DashboardLayout>
       <div className="space-y-6">
@@ -264,9 +267,6 @@ export default function RecursoEnergetico() {
         {/* ── filtro de período ── */}
         <DateRangeFilter selectedMonths={months} onMonthsChange={setMonths} />
 
-        {isLoading && (
-          <Card className="p-4 text-sm text-muted-foreground">Cargando datos del recurso...</Card>
-        )}
         {isError && (
           <Card className="p-4 text-sm text-destructive">
             No se pudo cargar la vista del recurso.

@@ -5,6 +5,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { useOperationsOverview } from "@/hooks/useOperationsOverview";
+import { PrediccionesMLSkeleton } from "@/components/skeletons/PageSkeleton";
 import { runMlTraining, getAnalisisFlota, getModeloEstado, reentrenarCombustible, type AnalisisFlotaResult, type ModeloEstado } from "@/lib/api";
 import { useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
@@ -67,6 +68,8 @@ export default function Predicciones() {
     }
   };
 
+  if (isLoading) return <PrediccionesMLSkeleton />;
+
   return (
     <DashboardLayout>
       <div className="space-y-6">
@@ -82,7 +85,6 @@ export default function Predicciones() {
           </Button>
         </div>
 
-        {isLoading && <Card className="p-4 text-sm text-muted-foreground">Cargando predicciones...</Card>}
         {isError && <Card className="p-4 text-sm text-destructive">No se pudieron cargar predicciones.</Card>}
 
         {/* ── KPIs ── */}

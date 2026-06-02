@@ -4,6 +4,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { useOperationsOverview } from "@/hooks/useOperationsOverview";
+import { AnomaliasSkeleton } from "@/components/skeletons/PageSkeleton";
 import { resolveAlert, getAnalisisFlota, exportRetcCsv, type AnalisisFlotaResult } from "@/lib/api";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
@@ -85,6 +86,8 @@ export default function Anomalias() {
     }
   };
 
+  if (isLoading) return <AnomaliasSkeleton />;
+
   return (
     <DashboardLayout>
       <div className="space-y-6">
@@ -93,7 +96,6 @@ export default function Anomalias() {
           <p className="text-sm text-muted-foreground">Alertas automáticas por patrones inusuales de consumo</p>
         </div>
 
-        {isLoading && <Card className="p-4 text-sm text-muted-foreground">Cargando anomalías...</Card>}
         {isError && <Card className="p-4 text-sm text-destructive">No se pudieron cargar anomalías.</Card>}
 
         {/* ── KPIs agua/electricidad ── */}

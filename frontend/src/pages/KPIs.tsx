@@ -3,6 +3,7 @@ import { DashboardLayout } from "@/components/DashboardLayout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { useOperationsOverview } from "@/hooks/useOperationsOverview";
+import { KpisSkeleton } from "@/components/skeletons/PageSkeleton";
 
 const statusColors: Record<string, string> = {
   good: "bg-green-100 text-green-800",
@@ -27,6 +28,8 @@ export default function KPIs() {
 
   const kpis = data?.kpis ?? [];
 
+  if (isLoading) return <KpisSkeleton />;
+
   return (
     <DashboardLayout>
       <div className="space-y-6">
@@ -35,7 +38,6 @@ export default function KPIs() {
           <p className="text-sm text-muted-foreground">Key Performance Indicators del sistema energético</p>
         </div>
 
-        {isLoading && <Card className="p-4 text-sm text-muted-foreground">Cargando KPIs...</Card>}
         {isError && <Card className="p-4 text-sm text-destructive">No se pudieron cargar los KPIs.</Card>}
 
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">

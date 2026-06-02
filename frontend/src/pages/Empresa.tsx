@@ -2,10 +2,13 @@ import { Building2, Globe, Users, Zap, Database, Building } from "lucide-react";
 import { DashboardLayout } from "@/components/DashboardLayout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { useOperationsOverview } from "@/hooks/useOperationsOverview";
+import { EmpresaSkeleton } from "@/components/skeletons/PageSkeleton";
 
 export default function Empresa() {
   const { data, isLoading, isError } = useOperationsOverview();
   const company = data?.company;
+
+  if (isLoading) return <EmpresaSkeleton />;
 
   return (
     <DashboardLayout>
@@ -15,7 +18,6 @@ export default function Empresa() {
           <p className="text-sm text-muted-foreground">Información y configuración de la organización</p>
         </div>
 
-        {isLoading && <Card className="p-4 text-sm text-muted-foreground">Cargando información de empresa...</Card>}
         {isError && <Card className="p-4 text-sm text-destructive">No se pudo cargar la información de empresa.</Card>}
 
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">

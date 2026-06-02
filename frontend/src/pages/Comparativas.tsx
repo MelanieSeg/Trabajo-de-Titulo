@@ -3,6 +3,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { ChartContainer, ChartTooltip, ChartTooltipContent } from "@/components/ui/chart";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid } from "recharts";
 import { useOperationsOverview } from "@/hooks/useOperationsOverview";
+import { ComparativasSkeleton } from "@/components/skeletons/PageSkeleton";
 
 const chartConfig = {
   sinSoftware: { label: "Sin software (USD)", color: "hsl(var(--chart-1))" },
@@ -20,6 +21,8 @@ export default function Comparativas() {
     ahorro: row.projected_savings_usd,
   }));
 
+  if (isLoading) return <ComparativasSkeleton />;
+
   return (
     <DashboardLayout>
       <div className="space-y-6">
@@ -28,7 +31,6 @@ export default function Comparativas() {
           <p className="text-sm text-muted-foreground">Comparación anual: escenario sin software vs optimizado/predictivo</p>
         </div>
 
-        {isLoading && <Card className="p-4 text-sm text-muted-foreground">Cargando comparativas...</Card>}
         {isError && <Card className="p-4 text-sm text-destructive">No se pudieron cargar comparativas.</Card>}
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">

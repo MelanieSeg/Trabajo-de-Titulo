@@ -3,6 +3,7 @@ import { DashboardLayout } from "@/components/DashboardLayout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { useOperationsOverview } from "@/hooks/useOperationsOverview";
+import { ExportarSkeleton } from "@/components/skeletons/PageSkeleton";
 import {
   exportAlertsCsv,
   exportConsumptionCsv,
@@ -43,6 +44,8 @@ export default function Exportar() {
     }
   };
 
+  if (isLoading) return <ExportarSkeleton />;
+
   return (
     <DashboardLayout>
       <div className="space-y-6">
@@ -51,7 +54,6 @@ export default function Exportar() {
           <p className="text-sm text-muted-foreground">Descarga datos en múltiples formatos</p>
         </div>
 
-        {isLoading && <Card className="p-4 text-sm text-muted-foreground">Cargando opciones de exportación...</Card>}
         {isError && <Card className="p-4 text-sm text-destructive">No se pudo cargar el módulo de exportación.</Card>}
 
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">

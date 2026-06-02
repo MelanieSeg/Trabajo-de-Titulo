@@ -3,6 +3,7 @@ import { DashboardLayout } from "@/components/DashboardLayout";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { useOperationsOverview } from "@/hooks/useOperationsOverview";
+import { AlertasSkeleton } from "@/components/skeletons/PageSkeleton";
 import { resolveAlert, resolveAllAlerts } from "@/lib/api";
 import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
@@ -61,6 +62,8 @@ export default function AlertasPage() {
     }
   };
 
+  if (isLoading) return <AlertasSkeleton />;
+
   return (
     <DashboardLayout>
       <div className="space-y-6">
@@ -74,7 +77,6 @@ export default function AlertasPage() {
           </Button>
         </div>
 
-        {isLoading && <Card className="p-4 text-sm text-muted-foreground">Cargando alertas...</Card>}
         {isError && <Card className="p-4 text-sm text-destructive">No se pudieron cargar alertas.</Card>}
 
         <Card>

@@ -10,6 +10,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { DateRangeFilter } from "@/components/DateRangeFilter";
 import { useOperationsOverview } from "@/hooks/useOperationsOverview";
+import { AguaSkeleton } from "@/components/skeletons/PageSkeleton";
 import { Button } from "@/components/ui/button";
 import {
   downloadUtilityConsumptionReport,
@@ -143,6 +144,8 @@ export default function Agua() {
     }
   };
 
+  if (isLoading) return <AguaSkeleton />;
+
   return (
     <DashboardLayout>
       <div className="space-y-6">
@@ -169,7 +172,6 @@ export default function Agua() {
 
         <DateRangeFilter selectedMonths={months} onMonthsChange={setMonths} />
 
-        {isLoading && <Card className="p-4 text-sm text-muted-foreground">Cargando datos reales...</Card>}
         {isError && <Card className="p-4 text-sm text-destructive">No se pudo cargar la vista de agua.</Card>}
 
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">

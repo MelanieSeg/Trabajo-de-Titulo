@@ -4,6 +4,7 @@ import { AlertTriangle, FileCheck2, FileSpreadsheet, FileText, HardDriveDownload
 import { toast } from "sonner";
 
 import { DashboardLayout } from "@/components/DashboardLayout";
+import { FiscalizacionSkeleton } from "@/components/skeletons/PageSkeleton";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -93,6 +94,14 @@ export default function Fiscalizacion() {
     queryKey: ["fiscalizacion-audit-integrity"],
     queryFn: () => verifyAuditChainIntegrity(),
   });
+
+  const isLoading =
+    standardsQuery.isLoading ||
+    requirementsQuery.isLoading ||
+    complianceQuery.isLoading ||
+    reportsHistoryQuery.isLoading ||
+    calibrationsQuery.isLoading ||
+    auditIntegrityQuery.isLoading;
 
   const refreshFiscalizacion = async () => {
     await queryClient.invalidateQueries({ queryKey: ["fiscalizacion-compliance"] });
@@ -217,6 +226,8 @@ export default function Fiscalizacion() {
       toast.error(error instanceof Error ? error.message : "No se pudo obtener el certificado.");
     }
   };
+
+  if (isLoading) return <FiscalizacionSkeleton />;
 
   return (
     <DashboardLayout>

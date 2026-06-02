@@ -3,6 +3,7 @@ import { DashboardLayout } from "@/components/DashboardLayout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { ConsumptionChart } from "@/components/ConsumptionChart";
 import { useOperationsOverview } from "@/hooks/useOperationsOverview";
+import { TendenciasSkeleton } from "@/components/skeletons/PageSkeleton";
 
 export default function Tendencias() {
   const { data, isLoading, isError } = useOperationsOverview();
@@ -14,6 +15,8 @@ export default function Tendencias() {
   }));
   const trendChanges = data?.trends.changes ?? [];
 
+  if (isLoading) return <TendenciasSkeleton />;
+
   return (
     <DashboardLayout>
       <div className="space-y-6">
@@ -22,7 +25,6 @@ export default function Tendencias() {
           <p className="text-sm text-muted-foreground">Evolución histórica del consumo energético e hídrico</p>
         </div>
 
-        {isLoading && <Card className="p-4 text-sm text-muted-foreground">Cargando tendencias...</Card>}
         {isError && <Card className="p-4 text-sm text-destructive">No se pudieron cargar tendencias.</Card>}
 
         <ConsumptionChart

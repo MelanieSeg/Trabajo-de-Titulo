@@ -3,10 +3,13 @@ import { DashboardLayout } from "@/components/DashboardLayout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { useOperationsOverview } from "@/hooks/useOperationsOverview";
+import { BaseDatosSkeleton } from "@/components/skeletons/PageSkeleton";
 
 export default function BaseDatos() {
   const { data, isLoading, isError } = useOperationsOverview();
   const dbInfo = data?.database;
+
+  if (isLoading) return <BaseDatosSkeleton />;
 
   return (
     <DashboardLayout>
@@ -16,7 +19,6 @@ export default function BaseDatos() {
           <p className="text-sm text-muted-foreground">Estado y administración de PostgreSQL</p>
         </div>
 
-        {isLoading && <Card className="p-4 text-sm text-muted-foreground">Cargando estado de base de datos...</Card>}
         {isError && <Card className="p-4 text-sm text-destructive">No se pudo cargar el estado de base de datos.</Card>}
 
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
