@@ -376,6 +376,12 @@ export async function uploadFuelTransactionsCsv(file: File): Promise<ETLUploadRe
   return request<ETLUploadResult>("/etl/upload/fuel-transactions", { method: "POST", body: formData });
 }
 
+export async function uploadResourceCsv(code: string, file: File): Promise<ETLUploadResult> {
+  const formData = new FormData();
+  formData.append("file", file);
+  return request<ETLUploadResult>(`/etl/upload/resource/${code}`, { method: "POST", body: formData });
+}
+
 export function generateMonthlyReport(): Promise<ReportResult> {
   return request<ReportResult>("/reports/monthly");
 }

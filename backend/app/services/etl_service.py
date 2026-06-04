@@ -856,6 +856,165 @@ def run_etl_from_fuel_csv(db: Session, csv_path: str, source_filename: str | Non
     return job
 
 
+RESOURCE_VALID_CODES = {
+    "gas_natural", "gasolina", "glp_propano", "vapor_termica",
+    "energia_renovable", "residuos", "emisiones_co2e", "quimicos_consumibles",
+}
+
+_RESOURCE_EMISSION_FACTORS: dict[str, float] = {
+    "gas_natural":        0.0019,
+    "gasolina":           0.00231,
+    "glp_propano":        0.00300,
+    "vapor_termica":      0.040,
+    "energia_renovable":  0.00005,
+    "residuos":           0.0008,
+    "emisiones_co2e":     1.0,
+    "quimicos_consumibles": 0.0006,
+}
+
+_RESOURCE_COST_FACTORS: dict[str, float] = {
+    "gas_natural":        0.55,
+    "gasolina":           1.35,
+    "glp_propano":        0.95,
+    "vapor_termica":      12.0,
+    "energia_renovable":  0.08,
+    "residuos":           0.20,
+    "emisiones_co2e":     18.0,
+    "quimicos_consumibles": 2.5,
+}
+
+
+def run_etl_from_resource_csv(
+    db: Session,
+    *,
+    code: str,
+    csv_path: str,
+    source_filename: str | None = None,
+) -> ETLJob:
+    """Carga mensual para cualquier recurso fiscalizado excepto electricidad, agua y combustibles de flota.
+
+    Formato CSV esperado: year,month,consumption_value,cost_usd
+    - cost_usd es opcional; si no se indica se estima con el factor de costo del recurso.
+    """
+    started_at = datetime.now(timezone.utc)
+    path = Path(csv_path)
+    if not path.exists():
+        raise FileNotFoundError(f"No se encontró archivo CSV: {csv_path}")
+
+    if code not in RESOURCE_VALID_CODES:
+        raise ValueError(
+            f"Código de recurso no válido: '{code}'. "
+            f"Válidos: {', '.join(sorted(RESOURCE_VALID_CODES))}"
+        )
+
+    source_name = source_filename or path.name
+    df = pd.read_csv(path)
+    df.columns = [c.strip().lower() for c in df.columns]
+
+    missing = {"year", "month", "consumption_value"} - set(df.columns)
+    if missing:
+        raise ValueError(
+            f"Faltan columnas obligatorias: {', '.join(sorted(missing))}. "
+            "Formato esperado: year,month,consumption_value,cost_usd"
+        )
+
+    initial_rows = len(df)
+
+    for col in ("year", "month", "consumption_value"):
+        df[col] = pd.to_numeric(df[col], errors="coerce")
+
+    df = df.dropna(subset=["year", "month", "consumption_value"])
+    df = df[(df["year"] >= 2000) & (df["year"] <= 2100)]
+    df = df[(df["month"] >= 1) & (df["month"] <= 12)]
+    df = df[df["consumption_value"] >= 0]
+
+    if "cost_usd" in df.columns:
+        df["cost_usd"] = pd.to_numeric(df["cost_usd"], errors="coerce").fillna(0.0)
+    else:
+        df["cost_usd"] = 0.0
+
+    rejected = initial_rows - len(df)
+
+    if df.empty:
+        raise ValueError(
+            "CSV sin filas válidas. "
+            "Verifica que year (2000-2100), month (1-12) y consumption_value sean numéricos y no negativos."
+        )
+
+    resource_type = db.scalar(
+        select(ResourceType).where(ResourceType.code == code, ResourceType.is_active.is_(True))
+    )
+    if not resource_type:
+        raise ValueError(f"Recurso '{code}' no encontrado.")
+
+    facility_id = db.scalar(select(Facility.id).order_by(Facility.id.asc()).limit(1))
+    if not facility_id:
+        raise ValueError("No existe ninguna instalación configurada en el sistema.")
+
+    emission_factor = _RESOURCE_EMISSION_FACTORS.get(code, 0.0)
+    cost_factor     = _RESOURCE_COST_FACTORS.get(code, 1.0)
+
+    processed = 0
+    for row in df.itertuples(index=False):
+        year  = int(row.year)
+        month = int(row.month)
+        value = float(row.consumption_value)
+        cost_raw = float(getattr(row, "cost_usd", 0.0) or 0.0)
+        cost = cost_raw if cost_raw > 0 else round(value * cost_factor, 4)
+        emissions = value if code == "emisiones_co2e" else round(value * emission_factor, 6)
+
+        record = db.scalar(
+            select(ResourceMonthlyConsumption).where(
+                ResourceMonthlyConsumption.resource_type_id == resource_type.id,
+                ResourceMonthlyConsumption.facility_id == facility_id,
+                ResourceMonthlyConsumption.year == year,
+                ResourceMonthlyConsumption.month == month,
+            )
+        )
+        if record:
+            record.consumption_value = max(0.0, value)
+            record.cost_usd          = max(0.0, cost)
+            record.emissions_tco2e   = max(0.0, emissions)
+            record.source            = "csv_upload"
+        else:
+            record = ResourceMonthlyConsumption(
+                resource_type_id=resource_type.id,
+                facility_id=facility_id,
+                year=year,
+                month=month,
+                consumption_value=max(0.0, value),
+                cost_usd=max(0.0, cost),
+                emissions_tco2e=max(0.0, emissions),
+                source="csv_upload",
+            )
+            db.add(record)
+
+        db.flush()
+        processed += 1
+
+    finished_at = datetime.now(timezone.utc)
+    job = ETLJob(
+        source_filename=source_name,
+        rows_processed=processed,
+        rows_rejected=rejected,
+        status="completed",
+        notes=f"Carga de {resource_type.name}: {processed} períodos actualizados, {rejected} filas rechazadas",
+        started_at=started_at,
+        finished_at=finished_at,
+    )
+    db.add(job)
+
+    log_activity(
+        db,
+        activity_type="etl",
+        message=f"Carga de {resource_type.name} desde {source_name}",
+        metadata={"code": code, "rows_processed": processed, "rows_rejected": rejected},
+    )
+
+    db.flush()
+    return job
+
+
 def run_etl_from_utility_csv(
     db: Session,
     *,
