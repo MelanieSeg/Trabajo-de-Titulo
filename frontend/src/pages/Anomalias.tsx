@@ -57,6 +57,12 @@ export default function Anomalias() {
   const flotaMedias  = anomaliasFlota.filter(a => a.severidad === "media").length;
   const flotaBajas   = anomaliasFlota.filter(a => a.severidad === "baja").length;
 
+  // Paginación anomalías E/A
+  const [pagAnomEA, setPagAnomEA] = useState(1);
+  const ANOM_EA_PAGE_SIZE = 10;
+  const totalPagesEA = Math.ceil(anomalies.length / ANOM_EA_PAGE_SIZE);
+  const anomaliesPaginadas = anomalies.slice((pagAnomEA - 1) * ANOM_EA_PAGE_SIZE, pagAnomEA * ANOM_EA_PAGE_SIZE);
+
   // Filtros de la tabla de flota
   const [filtroVehiculo,  setFiltroVehiculo]  = useState("");
   const [filtroSeveridad, setFiltroSeveridad] = useState<"all" | "alta" | "media" | "baja">("all");
@@ -131,13 +137,18 @@ export default function Anomalias() {
         {/* Lista anomalías agua/electricidad */}
         <Card>
           <CardHeader>
-            <CardTitle className="text-base">Anomalías Detectadas: Energía y Agua</CardTitle>
+            <div className="flex items-center justify-between">
+              <CardTitle className="text-base">Anomalías detectadas</CardTitle>
+              {anomalies.length > 0 && (
+                <span className="text-xs text-muted-foreground">{anomalies.length} registros</span>
+              )}
+            </div>
           </CardHeader>
           <CardContent className="space-y-3">
             {anomalies.length === 0 && (
-              <p className="text-sm text-muted-foreground text-center py-4">Sin anomalías activas en agua/electricidad.</p>
+              <p className="text-sm text-muted-foreground text-center py-4">Sin anomalías activas.</p>
             )}
-            {anomalies.map((anomaly) => {
+            {anomaliesPaginadas.map((anomaly) => {
               const cfg = severityConfig[anomaly.severity] ?? severityConfig.info;
               return (
                 <div key={anomaly.id} className="flex items-start gap-3 p-3 rounded-lg bg-muted/50">
@@ -164,6 +175,39 @@ export default function Anomalias() {
                 </div>
               );
             })}
+            {totalPagesEA > 1 && (
+              <div className="flex items-center justify-between pt-2 text-xs text-muted-foreground">
+                <span>Página {pagAnomEA} de {totalPagesEA} · mostrando {anomaliesPaginadas.length} de {anomalies.length}</span>
+                <div className="flex items-center gap-1">
+                  <button
+                    type="button"
+                    className="rounded px-2.5 py-1 border hover:bg-muted disabled:opacity-40 transition-colors"
+                    disabled={pagAnomEA === 1}
+                    onClick={() => setPagAnomEA(p => p - 1)}
+                  >
+                    ← Anterior
+                  </button>
+                  {Array.from({ length: totalPagesEA }, (_, i) => i + 1).map(p => (
+                    <button
+                      key={p}
+                      type="button"
+                      className={`rounded px-2.5 py-1 border transition-colors ${p === pagAnomEA ? "bg-primary text-primary-foreground border-primary" : "hover:bg-muted"}`}
+                      onClick={() => setPagAnomEA(p)}
+                    >
+                      {p}
+                    </button>
+                  ))}
+                  <button
+                    type="button"
+                    className="rounded px-2.5 py-1 border hover:bg-muted disabled:opacity-40 transition-colors"
+                    disabled={pagAnomEA === totalPagesEA}
+                    onClick={() => setPagAnomEA(p => p + 1)}
+                  >
+                    Siguiente →
+                  </button>
+                </div>
+              </div>
+            )}
           </CardContent>
         </Card>
 
