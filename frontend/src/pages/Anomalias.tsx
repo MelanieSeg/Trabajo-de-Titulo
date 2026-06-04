@@ -12,6 +12,10 @@ import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { toast } from "sonner";
 
+const VEHICLE_CAT_ES: Record<string, string> = {
+  Van: "Furgoneta", Truck: "Camión", Bus: "Bus", Car: "Auto",
+};
+
 const severityConfig: Record<string, { icon: typeof AlertTriangle; color: string; badge: string }> = {
   critical: { icon: XCircle,        color: "text-red-500",    badge: "bg-red-100 text-red-800" },
   warning:  { icon: AlertTriangle,  color: "text-yellow-500", badge: "bg-yellow-100 text-yellow-800" },
@@ -289,7 +293,7 @@ export default function Anomalias() {
                           <tr key={a.id_transaccion} className="border-b last:border-0 hover:bg-muted/20 transition-colors">
                             <td className="p-3">
                               <span className="font-mono text-xs font-medium">{a.vehicle_id}</span>
-                              <span className="ml-1 text-xs text-muted-foreground">({a.vehicle_cat})</span>
+                              <span className="ml-1 text-xs text-muted-foreground">({VEHICLE_CAT_ES[a.vehicle_cat] ?? a.vehicle_cat})</span>
                             </td>
                             <td className="p-3 text-muted-foreground text-xs">{a.fecha}</td>
                             <td className="p-3 text-right font-medium">{a.fuel_liters_real.toFixed(1)}</td>

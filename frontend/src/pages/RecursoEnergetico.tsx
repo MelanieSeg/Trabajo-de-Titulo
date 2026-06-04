@@ -61,6 +61,17 @@ const axisStroke = "hsl(var(--muted-foreground))";
 const gridStroke  = "hsl(var(--border))";
 const tickStyle   = { fill: "hsl(var(--foreground))", fontSize: 12 };
 
+const VEHICLE_CAT_ES: Record<string, string> = {
+  Van: "Furgoneta", Truck: "Camión", Bus: "Bus", Car: "Auto",
+};
+
+const DIESEL_CHART_CONFIG = {
+  consumo_D: { label: "Diésel (L)",         color: "hsl(24 82% 50%)"   },
+  consumo_G: { label: "Gas Oil (L)",         color: "hsl(185 75% 45%)"  },
+  costo_D:   { label: "Costo Diésel (USD)",  color: "hsl(24 82% 50%)"   },
+  costo_G:   { label: "Costo Gas Oil (USD)", color: "hsl(185 75% 45%)"  },
+};
+
 // catálogo de recursos
 const RESOURCE_UI: Record<
   string,
@@ -251,6 +262,24 @@ export default function RecursoEnergetico() {
       .map(r => ({ mes: r.mes, costo: r.costo }));
   }, [code, fuelFilter, fuelBreakdown, costData]);
 
+  const dualChartData = useMemo(() => {
+    if (code !== "diesel" || !fuelBreakdown.length) return [];
+    const monthMap = new Map<string, { mes: string; consumo_D: number; consumo_G: number; costo_D: number; costo_G: number }>();
+    for (const row of fuelBreakdown) {
+      const key = `${row.year}-${String(row.month).padStart(2, "0")}`;
+      if (!monthMap.has(key)) monthMap.set(key, { mes: row.mes, consumo_D: 0, consumo_G: 0, costo_D: 0, costo_G: 0 });
+      const entry = monthMap.get(key)!;
+      if (row.fuel_type === "D") { entry.consumo_D += row.consumo; entry.costo_D += row.costo; }
+      else                       { entry.consumo_G += row.consumo; entry.costo_G += row.costo; }
+    }
+    return Array.from(monthMap.entries()).sort(([a], [b]) => a.localeCompare(b)).map(([, v]) => v);
+  }, [code, fuelBreakdown]);
+
+  const areasData = useMemo(
+    () => (data?.areas ?? []).map(a => ({ ...a, area: VEHICLE_CAT_ES[a.area] ?? a.area })),
+    [data?.areas],
+  );
+
   const donutData = useMemo(() => {
     if (!hasGasOil) return [];
     const totalD = fuelBreakdown.filter(r => r.fuel_type === "D").reduce((s, r) => s + r.consumo, 0);
@@ -355,40 +384,37 @@ export default function RecursoEnergetico() {
 
         {/* gráficos */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-          {/* tendencia mensual + predicción ML */}
+          {/* tendencia mensual */}
           <Card>
             <CardHeader>
-              <CardTitle className="text-base">Tendencia Mensual y Predicción ML</CardTitle>
+              <CardTitle className="text-base">Tendencia Mensual{code !== "diesel" && " y Predicción ML"}</CardTitle>
             </CardHeader>
             <CardContent>
-              <ChartContainer config={chartConfig} className="h-[300px] w-full">
-                <LineChart data={filteredChartData}>
-                  <CartesianGrid strokeDasharray="3 3" stroke={gridStroke} />
-                  <XAxis dataKey="mes" stroke={axisStroke} tick={tickStyle} tickLine={{ stroke: axisStroke }} />
-                  <YAxis stroke={axisStroke} tick={tickStyle} tickLine={{ stroke: axisStroke }} />
-                  <ChartTooltip content={<ChartTooltipContent />} />
-                  <Legend wrapperStyle={{ fontSize: 11 }} />
-                  <Line
-                    type="monotone"
-                    dataKey="consumo"
-                    stroke="var(--color-consumo)"
-                    strokeWidth={2}
-                    dot={false}
-                    connectNulls={false}
-                    name={`Consumo real (${data?.resource.unit ?? ""})`}
-                  />
-                  <Line
-                    type="monotone"
-                    dataKey="prediccion"
-                    stroke="var(--color-prediccion)"
-                    strokeWidth={2}
-                    strokeDasharray="6 4"
-                    dot={false}
-                    connectNulls
-                    name={`Predicción ML (${data?.resource.unit ?? ""})`}
-                  />
-                </LineChart>
-              </ChartContainer>
+              {code === "diesel" && dualChartData.length > 0 ? (
+                <ChartContainer config={DIESEL_CHART_CONFIG} className="h-[300px] w-full">
+                  <LineChart data={dualChartData}>
+                    <CartesianGrid strokeDasharray="3 3" stroke={gridStroke} />
+                    <XAxis dataKey="mes" stroke={axisStroke} tick={tickStyle} tickLine={{ stroke: axisStroke }} />
+                    <YAxis stroke={axisStroke} tick={tickStyle} tickLine={{ stroke: axisStroke }} />
+                    <ChartTooltip content={<ChartTooltipContent />} />
+                    <Legend wrapperStyle={{ fontSize: 11 }} />
+                    <Line type="monotone" dataKey="consumo_D" stroke="var(--color-consumo_D)" strokeWidth={2} dot={false} connectNulls name="Diésel (L)" />
+                    <Line type="monotone" dataKey="consumo_G" stroke="var(--color-consumo_G)" strokeWidth={2} dot={false} connectNulls name="Gas Oil (L)" />
+                  </LineChart>
+                </ChartContainer>
+              ) : (
+                <ChartContainer config={chartConfig} className="h-[300px] w-full">
+                  <LineChart data={filteredChartData}>
+                    <CartesianGrid strokeDasharray="3 3" stroke={gridStroke} />
+                    <XAxis dataKey="mes" stroke={axisStroke} tick={tickStyle} tickLine={{ stroke: axisStroke }} />
+                    <YAxis stroke={axisStroke} tick={tickStyle} tickLine={{ stroke: axisStroke }} />
+                    <ChartTooltip content={<ChartTooltipContent />} />
+                    <Legend wrapperStyle={{ fontSize: 11 }} />
+                    <Line type="monotone" dataKey="consumo" stroke="var(--color-consumo)" strokeWidth={2} dot={false} connectNulls={false} name={`Consumo real (${data?.resource.unit ?? ""})`} />
+                    <Line type="monotone" dataKey="prediccion" stroke="var(--color-prediccion)" strokeWidth={2} strokeDasharray="6 4" dot={false} connectNulls name={`Predicción ML (${data?.resource.unit ?? ""})`} />
+                  </LineChart>
+                </ChartContainer>
+              )}
             </CardContent>
           </Card>
 
@@ -396,14 +422,12 @@ export default function RecursoEnergetico() {
           <Card>
             <CardHeader>
               <CardTitle className="text-base">
-                {code === "diesel"
-                  ? "Consumo por Categoría de Vehículo"
-                  : "Distribución por Área Funcional"}
+                {code === "diesel" ? "Consumo por Categoría de Vehículo" : "Distribución por Área Funcional"}
               </CardTitle>
             </CardHeader>
             <CardContent>
               <ChartContainer config={chartConfig} className="h-[300px] w-full">
-                <BarChart data={data?.areas ?? []}>
+                <BarChart data={areasData}>
                   <CartesianGrid strokeDasharray="3 3" stroke={gridStroke} />
                   <XAxis dataKey="area" stroke={axisStroke} tick={tickStyle} tickLine={{ stroke: axisStroke }} />
                   <YAxis stroke={axisStroke} tick={tickStyle} tickLine={{ stroke: axisStroke }} />
@@ -421,15 +445,29 @@ export default function RecursoEnergetico() {
             <CardTitle className="text-base">Evolución del Costo Mensual (USD)</CardTitle>
           </CardHeader>
           <CardContent>
-            <ChartContainer config={chartConfig} className="h-[260px] w-full">
-              <BarChart data={filteredCostData}>
-                <CartesianGrid strokeDasharray="3 3" stroke={gridStroke} />
-                <XAxis dataKey="mes" stroke={axisStroke} tick={tickStyle} tickLine={{ stroke: axisStroke }} />
-                <YAxis stroke={axisStroke} tick={tickStyle} tickLine={{ stroke: axisStroke }} />
-                <ChartTooltip content={<ChartTooltipContent />} />
-                <Bar dataKey="costo" fill="var(--color-costo)" radius={[4, 4, 0, 0]} />
-              </BarChart>
-            </ChartContainer>
+            {code === "diesel" && dualChartData.length > 0 ? (
+              <ChartContainer config={DIESEL_CHART_CONFIG} className="h-[260px] w-full">
+                <BarChart data={dualChartData}>
+                  <CartesianGrid strokeDasharray="3 3" stroke={gridStroke} />
+                  <XAxis dataKey="mes" stroke={axisStroke} tick={tickStyle} tickLine={{ stroke: axisStroke }} />
+                  <YAxis stroke={axisStroke} tick={tickStyle} tickLine={{ stroke: axisStroke }} />
+                  <ChartTooltip content={<ChartTooltipContent />} />
+                  <Legend wrapperStyle={{ fontSize: 11 }} />
+                  <Bar dataKey="costo_D" fill="var(--color-costo_D)" radius={[4, 4, 0, 0]} name="Costo Diésel" />
+                  <Bar dataKey="costo_G" fill="var(--color-costo_G)" radius={[4, 4, 0, 0]} name="Costo Gas Oil" />
+                </BarChart>
+              </ChartContainer>
+            ) : (
+              <ChartContainer config={chartConfig} className="h-[260px] w-full">
+                <BarChart data={filteredCostData}>
+                  <CartesianGrid strokeDasharray="3 3" stroke={gridStroke} />
+                  <XAxis dataKey="mes" stroke={axisStroke} tick={tickStyle} tickLine={{ stroke: axisStroke }} />
+                  <YAxis stroke={axisStroke} tick={tickStyle} tickLine={{ stroke: axisStroke }} />
+                  <ChartTooltip content={<ChartTooltipContent />} />
+                  <Bar dataKey="costo" fill="var(--color-costo)" radius={[4, 4, 0, 0]} />
+                </BarChart>
+              </ChartContainer>
+            )}
           </CardContent>
         </Card>
 

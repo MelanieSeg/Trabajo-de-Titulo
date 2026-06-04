@@ -22,10 +22,10 @@ import { Link } from "react-router-dom";
 import { ModeloEstadoSkeleton } from "@/components/skeletons/PageSkeleton";
 
 const VEHICLE_LABELS: Record<FuelPredictionRequest["vehicle_cat"], string> = {
-  Van:   "Van / Furgoneta",
-  Truck: "Camión / HGV",
-  Bus:   "Bus / Minibús",
-  Car:   "Automóvil",
+  Van:   "Furgoneta",
+  Truck: "Camión",
+  Bus:   "Bus",
+  Car:   "Auto",
 };
 
 const FUEL_LABELS: Record<FuelPredictionRequest["fuel_type"], string> = {
@@ -588,7 +588,7 @@ export default function PrediccionesCombustible() {
                               hour: "2-digit", minute: "2-digit",
                             })}
                           </td>
-                          <td className="p-3">{item.vehicle_cat}</td>
+                          <td className="p-3">{VEHICLE_LABELS[item.vehicle_cat as keyof typeof VEHICLE_LABELS] ?? item.vehicle_cat}</td>
                           <td className="p-3">
                             <Badge variant="outline" className="text-xs">
                               {item.fuel_type === "D" ? "Diésel" : "Gas Oil"}

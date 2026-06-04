@@ -386,8 +386,19 @@ class ResourceAlertItem(BaseModel):
     created_at: datetime
 
 
+class FuelBreakdownPoint(BaseModel):
+    year: int
+    month: int
+    mes: str
+    fuel_type: str
+    consumo: float
+    costo: float
+    co2_kg: float
+
+
 class ResourceOverviewResponse(BaseModel):
     resource: ResourceCatalogItem
+    fuel_breakdown: list[FuelBreakdownPoint] = []
     cards: list[ResourceOverviewCard]
     monthly: list[ResourceMonthlyPoint]
     areas: list[ResourceAreaPoint]
