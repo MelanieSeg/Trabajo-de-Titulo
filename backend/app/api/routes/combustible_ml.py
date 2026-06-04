@@ -79,7 +79,7 @@ def _predecir_litros(
     litros_teo = dist_km / kpl if km_per_liter is not None else np.nan
 
     if _model_meta.get("uses_year", True):
-        # Modelo genérico original — necesita el feature year
+        # Modelo genérico original, requiere el feature year
         features = pd.DataFrame([{
             "dist_km":         dist_km,
             "km_per_liter":    kpl,
@@ -89,7 +89,7 @@ def _predecir_litros(
             "year":            "2018-19",
         }])
     else:
-        # Modelo adaptado a la empresa — sin year
+        # Modelo adaptado a la empresa, no usa el feature year
         features = pd.DataFrame([{
             "dist_km":         dist_km,
             "km_per_liter":    kpl,
@@ -102,7 +102,7 @@ def _predecir_litros(
     return max(float(np.expm1(log_pred)), 0.0)
 
 
-# ─── Schemas ──────────────────────────────────────────────────────────────────
+# Schemas
 
 class FuelPredictionRequest(BaseModel):
     vehicle_cat: Literal["Van", "Truck", "Bus", "Car"] = Field(..., description="Categoría del vehículo")
@@ -231,7 +231,7 @@ class AnalisisFlotaResponse(BaseModel):
     modelo_info: dict[str, Any]
 
 
-# ─── Endpoints ────────────────────────────────────────────────────────────────
+# Endpoints
 
 @router.post("/predict", response_model=FuelPredictionResponse)
 def predict_fuel(
@@ -545,7 +545,7 @@ def exportar_retc(
     """
     Exporta un CSV con las transacciones de flota en formato compatible con
     el reporte RETC (Registro de Emisiones y Transferencia de Contaminantes)
-    exigido por la Ley 21.305 — Scope 1 combustión móvil.
+    exigido por la Ley 21.305 - Scope 1 combustión móvil.
     Filtra por año si se indica; de lo contrario exporta todo.
     """
     model = _get_model()
@@ -659,7 +659,7 @@ def create_transaccion(
     return t
 
 
-# ── Schema para estado del modelo ─────────────────────────────────────────────
+# Schema para estado del modelo
 
 class ModeloEstadoResponse(BaseModel):
     trained_with_company_data: bool
@@ -754,7 +754,7 @@ def reentrenar_modelo(
 
     df_base_clean = df_base[FEATURES + ["log_fuel"]].copy()
 
-    # 4. Preparar features de empresa — filtrar registros anómalos
+    # 4. Preparar features de empresa, filtrando registros anómalos
     # Se usa el modelo actual para detectar qué registros tienen una desviación
     # excesiva (>35%). Incluirlos en el entrenamiento sesgaría el modelo
     # hacia consumos ineficientes como si fueran normales.

@@ -93,7 +93,7 @@ export default function SubirDatos() {
             >
               <Upload className="h-10 w-10 mx-auto mb-3 text-muted-foreground" />
               <p className="text-sm font-medium mb-1">Arrastra archivos aquí o haz clic para seleccionar</p>
-              <p className="text-xs text-muted-foreground mb-4">CSV — Máx. 50MB</p>
+              <p className="text-xs text-muted-foreground mb-4">CSV · Máx. 50MB</p>
               <Button disabled={uploading}>
                 {uploading ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Upload className="h-4 w-4 mr-2" />}
                 {uploading ? "Subiendo..." : "Seleccionar Archivo"}
@@ -128,7 +128,7 @@ export default function SubirDatos() {
               <Fuel className="h-10 w-10 mx-auto mb-3 text-muted-foreground" />
               <p className="text-sm font-medium mb-1">Arrastra el CSV de flota aquí o haz clic para seleccionar</p>
               <p className="text-xs text-muted-foreground mb-4">
-                vehicle_cat: Van / Truck / Bus / Car — fuel_type: D (Diésel) / G (Gas Oil)
+                vehicle_cat: Van / Truck / Bus / Car · fuel_type: D (Diésel) / G (Gas Oil)
               </p>
               <Button disabled={uploadingFuel}>
                 {uploadingFuel ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Upload className="h-4 w-4 mr-2" />}
@@ -152,7 +152,7 @@ export default function SubirDatos() {
                 <div className="flex-1 min-w-0">
                   <p className="text-sm font-medium truncate">{upload.name}</p>
                   <p className="text-xs text-muted-foreground">
-                    {upload.date} — {upload.rows_processed} registros ({upload.rows_rejected} rechazados)
+                    {upload.date} · {upload.rows_processed} registros ({upload.rows_rejected} rechazados)
                   </p>
                 </div>
                 {upload.status === "completed" ? (

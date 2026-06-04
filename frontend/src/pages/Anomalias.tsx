@@ -98,7 +98,7 @@ export default function Anomalias() {
 
         {isError && <Card className="p-4 text-sm text-destructive">No se pudieron cargar anomalías.</Card>}
 
-        {/* ── KPIs agua/electricidad ── */}
+        {/* KPIs agua/electricidad */}
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
           <Card>
             <CardContent className="p-4 text-center">
@@ -123,7 +123,7 @@ export default function Anomalias() {
           </Card>
         </div>
 
-        {/* ── Lista anomalías agua/electricidad ── */}
+        {/* Lista anomalías agua/electricidad */}
         <Card>
           <CardHeader>
             <CardTitle className="text-base">Anomalías Detectadas: Energía y Agua</CardTitle>
@@ -162,7 +162,7 @@ export default function Anomalias() {
           </CardContent>
         </Card>
 
-        {/* ── KPIs flota combustible ── */}
+        {/* KPIs flota combustible */}
         {anomaliasFlota.length > 0 && (
           <>
             <div className="flex items-center gap-2 pt-2">
@@ -206,7 +206,7 @@ export default function Anomalias() {
               </Card>
             </div>
 
-            {/* ── Tabla de anomalías de flota ── */}
+            {/* Tabla de anomalías de flota */}
             <Card>
               <CardHeader>
                 <CardTitle className="text-base flex items-center gap-2">

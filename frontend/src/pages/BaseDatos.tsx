@@ -56,7 +56,7 @@ export default function BaseDatos() {
                 <div className="flex-1">
                   <p className="text-sm font-mono font-medium">{table.name}</p>
                   <p className="text-xs text-muted-foreground">
-                    {table.rows.toLocaleString("es-CL")} filas — {table.size}
+                    {table.rows.toLocaleString("es-CL")} filas · {table.size}
                   </p>
                 </div>
                 <Badge variant="secondary" className="bg-green-100 text-green-800">

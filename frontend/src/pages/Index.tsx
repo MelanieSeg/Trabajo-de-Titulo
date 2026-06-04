@@ -76,7 +76,7 @@ const Index = () => {
         <div>
           <h2 className="text-xl font-bold text-foreground">Dashboard de Eficiencia Energética</h2>
           <p className="text-sm text-muted-foreground">
-            Resumen general del consumo y predicciones — {summary.latest_month_label}
+            Resumen general del consumo y predicciones · {summary.latest_month_label}
           </p>
         </div>
 

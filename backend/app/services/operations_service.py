@@ -1280,7 +1280,7 @@ def _build_reports(monthly: list[dict[str, Any]]) -> list[dict[str, Any]]:
         payload.append(
             {
                 "id": idx,
-                "name": f"Reporte Mensual — {row['label']}",
+                "name": f"Reporte Mensual - {row['label']}",
                 "type": "PDF",
                 "date": f"{row['year']}-{int(row['month']):02d}-01",
                 "size": f"{estimated_size_mb:.1f} MB",

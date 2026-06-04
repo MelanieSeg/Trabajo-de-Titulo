@@ -28,7 +28,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setAuthenticated(false);
       }
     } else {
-      // Token ausente o ya expirado — limpiar por si quedaron restos
+      // Token ausente o expirado, limpiar restos
       apiLogout();
       setAuthenticated(false);
     }

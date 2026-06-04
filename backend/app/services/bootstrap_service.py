@@ -307,7 +307,7 @@ def seed_fuel_transactions(db: Session) -> None:
 
     txs: list[FuelTransaction] = []
 
-    # ── HISTÓRICO NORMAL: Ene 2025 – Mar 2026  (15 meses × 5 vehículos × 2 viajes = 150) ─
+    # HISTÓRICO NORMAL: Ene 2025 – Mar 2026  (15 meses × 5 vehículos × 2 viajes = 150)
     #
     # Flota:
     #   BCK-4521  Van/Diésel   kpl=13.0  reparto urbano          distancias 360-440 km
@@ -354,7 +354,7 @@ def seed_fuel_transactions(db: Session) -> None:
             _tx("PLX-6634", "Van",   "D", year, month, 25, db2, 11.5, 1050, _n(db2, 11.5, 0.04)),
         ]
 
-    # ── ABR 2026: inicio de anomalías ──────────────────────────────────────────────────────
+    # ABR 2026: inicio de anomalías
     # Desviaciones calculadas sobre litros_teoricos = dist/kpl:
     #   BCK-4521: 400/13=30.8 L  →  62 L  (+101%)  severidad "alta"
     #   GHD-7832: 300/6 =50.0 L  →  95 L  (+90%)   severidad "alta"
@@ -363,30 +363,30 @@ def seed_fuel_transactions(db: Session) -> None:
     #   PLX-6634: normal en abril
 
     txs += [
-        _tx("BCK-4521","Van",  "D",2026,4, 7,400,13.0,1050, 62.0, "Consumo elevado — posible fuga en inyector"),
-        _tx("BCK-4521","Van",  "D",2026,4,21,360,13.0,1050, 56.5, "Consumo superior al predicho — revisar motor"),
-        _tx("GHD-7832","Truck","D",2026,4,14,300, 6.0,1050, 95.0, "Filtro obstruido — consumo 90% sobre predicción"),
-        _tx("GHD-7832","Truck","D",2026,4,28,280, 6.0,1050, 88.0, "Anomalía persistente — requiere revisión mecánica"),
+        _tx("BCK-4521","Van",  "D",2026,4, 7,400,13.0,1050, 62.0, "Consumo elevado, posible fuga en inyector"),
+        _tx("BCK-4521","Van",  "D",2026,4,21,360,13.0,1050, 56.5, "Consumo superior al predicho, revisar motor"),
+        _tx("GHD-7832","Truck","D",2026,4,14,300, 6.0,1050, 95.0, "Filtro obstruido, consumo 90% sobre predicción"),
+        _tx("GHD-7832","Truck","D",2026,4,28,280, 6.0,1050, 88.0, "Anomalía persistente, requiere revisión mecánica"),
         _tx("MDW-2341","Bus",  "G",2026,4,10,200, 5.0, 950, _n(200,5.0,0.04)),
         _tx("MDW-2341","Bus",  "G",2026,4,24,210, 5.0, 950, _n(210,5.0,0.05)),
-        _tx("NTY-9901","Car",  "D",2026,4, 9,290,15.0,1050, 42.0, "Consumo anómalo — posible uso no autorizado"),
+        _tx("NTY-9901","Car",  "D",2026,4, 9,290,15.0,1050, 42.0, "Consumo anómalo, posible uso no autorizado"),
         _tx("NTY-9901","Car",  "D",2026,4,23,270,15.0,1050, _n(270,15.0,0.05)),
         _tx("PLX-6634","Van",  "D",2026,4,11,340,11.5,1050, _n(340,11.5,0.05)),
         _tx("PLX-6634","Van",  "D",2026,4,25,310,11.5,1050, _n(310,11.5,0.04)),
     ]
 
-    # ── MAY 2026: anomalías persistentes + recuperaciones ─────────────────────────────────
+    # MAY 2026: anomalías persistentes + recuperaciones
     # BCK-4521 persiste en anomalía, segundo viaje ya corregido
     # GHD-7832 persiste en anomalía, segundo viaje ya corregido
     # MDW-2341 ruta extendida en primer viaje (47% desvío = severidad "alta")
     # NTY-9901 recuperado; PLX-6634 normal
 
     txs += [
-        _tx("BCK-4521","Van",  "D",2026,5,12,420,13.0,1050, 64.0, "Anomalía persistente — inyector sin reparar"),
+        _tx("BCK-4521","Van",  "D",2026,5,12,420,13.0,1050, 64.0, "Anomalía persistente, inyector sin reparar"),
         _tx("BCK-4521","Van",  "D",2026,5,26,380,13.0,1050, _n(380,13.0,0.05), "Recuperado tras mantenimiento correctivo"),
-        _tx("GHD-7832","Truck","D",2026,5, 3,280, 6.0,1050, 88.0, "Anomalía persistente — filtro sin reemplazar"),
+        _tx("GHD-7832","Truck","D",2026,5, 3,280, 6.0,1050, 88.0, "Anomalía persistente, filtro sin reemplazar"),
         _tx("GHD-7832","Truck","D",2026,5,19,310, 6.0,1050, _n(310,6.0,0.05)),
-        _tx("MDW-2341","Bus",  "G",2026,5,12,210, 5.0, 950, 62.0, "Consumo elevado — ruta modificada sin autorización"),
+        _tx("MDW-2341","Bus",  "G",2026,5,12,210, 5.0, 950, 62.0, "Consumo elevado, ruta modificada sin autorización"),
         _tx("MDW-2341","Bus",  "G",2026,5,26,190, 5.0, 950, _n(190,5.0,0.04)),
         _tx("NTY-9901","Car",  "D",2026,5, 8,270,15.0,1050, _n(270,15.0,0.05)),
         _tx("NTY-9901","Car",  "D",2026,5,22,260,15.0,1050, _n(260,15.0,0.04)),

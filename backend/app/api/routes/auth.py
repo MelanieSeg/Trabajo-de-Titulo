@@ -158,14 +158,15 @@ def register(
     # Hashear contraseña
     password_hash = hash_password(payload.password)
 
-    # Crear nuevo usuario (por defecto: email_verified=False, status=INACTIVE, role=USER)
+    # El registro público siempre crea un ADMIN. Los USERs los crea el ADMIN desde /operations/users.
+    # Los USERs los crea el ADMIN desde /operations/users.
     new_user = User(
         email=email,
         password_hash=password_hash,
         full_name=payload.full_name,
-        email_verified=False,  # Se requiere verificación de email
-        status="INACTIVE",  # El usuario debe verificar el email primero
-        role="USER",
+        email_verified=False,
+        status="INACTIVE",
+        role="ADMIN",
         must_change_password=False,
         is_active=True,
     )

@@ -185,7 +185,7 @@ def _build_pdf(
     story = []
     generated_at = datetime.now(timezone.utc)
 
-    # ── Portada / cabecera ──────────────────────────────────────────────────
+    # Portada / cabecera
     story.append(Paragraph("EcoEnergy · Reporte de Consumo y Optimización", styles["EcoTitle"]))
     story.append(Spacer(1, 3 * mm))
     story.append(
@@ -197,7 +197,7 @@ def _build_pdf(
     )
     story.append(Spacer(1, 5 * mm))
 
-    # ── 1. Resumen ejecutivo ────────────────────────────────────────────────
+    # 1. Resumen ejecutivo
     story.append(Paragraph("1. Resumen Ejecutivo", styles["EcoHeading"]))
     total_consumo = sum(float(r["consumo"]) for r in selected_rows)
     total_costo = sum(float(r["costo"]) for r in selected_rows)
@@ -235,7 +235,7 @@ def _build_pdf(
     story.append(summary_table)
     story.append(Spacer(1, 6 * mm))
 
-    # ── 2. Evolución mensual ────────────────────────────────────────────────
+    # 2. Evolución mensual
     story.append(Paragraph("2. Evolución de Consumo y Costo", styles["EcoHeading"]))
     table_data = [["Período", f"Consumo ({unit})", "Costo (USD)"]]
     for row in selected_rows[:36]:
@@ -260,7 +260,7 @@ def _build_pdf(
     story.append(cons_table)
     story.append(Spacer(1, 6 * mm))
 
-    # ── 3. Predicciones ML ──────────────────────────────────────────────────
+    # 3. Predicciones ML
     story.append(Paragraph("3. Predicciones ML (Horizonte 3 meses)", styles["EcoHeading"]))
     if prediction_rows:
         pred_data = [["Período proyectado", f"Consumo previsto ({unit})"]]
@@ -291,7 +291,7 @@ def _build_pdf(
         )
     story.append(Spacer(1, 6 * mm))
 
-    # ── 4. Alertas activas ──────────────────────────────────────────────────
+    # 4. Alertas activas
     story.append(Paragraph("4. Alertas y Anomalías Detectadas", styles["EcoHeading"]))
     if alerts:
         alerts_data = [["Fecha", "Severidad", "Descripción"]]
@@ -325,7 +325,7 @@ def _build_pdf(
         )
     story.append(Spacer(1, 6 * mm))
 
-    # ── 5. Recomendaciones ──────────────────────────────────────────────────
+    # 5. Recomendaciones
     story.append(Paragraph("5. Recomendaciones y Plan de Acción", styles["EcoHeading"]))
     recommendations = [
         f"Monitorear el consumo de {resource_name} mensualmente con umbrales de alerta dinámica.",
@@ -343,7 +343,7 @@ def _build_pdf(
         story.append(Paragraph(f"• {rec}", styles["EcoBody"]))
         story.append(Spacer(1, 1.4 * mm))
 
-    # ── Header/footer ───────────────────────────────────────────────────────
+    # Header/footer
     def _draw_header_footer(canvas_obj, _doc) -> None:
         width, height = A4
         canvas_obj.saveState()

@@ -45,7 +45,7 @@ export default function Seguridad() {
                   <Eye className="h-4 w-4 text-muted-foreground" />
                   <div className="flex-1">
                     <p className="text-sm font-medium">{session.device}</p>
-                    <p className="text-xs text-muted-foreground">IP: {session.ip} — {relativeTime(session.date)}</p>
+                    <p className="text-xs text-muted-foreground">IP: {session.ip} · {relativeTime(session.date)}</p>
                   </div>
                   {session.current && <Badge>Actual</Badge>}
                 </div>
@@ -64,7 +64,7 @@ export default function Seguridad() {
                   <div className="flex-1">
                     <p className="text-sm font-medium">{log.action}</p>
                     <p className="text-xs text-muted-foreground">
-                      {log.user} — {relativeTime(log.date)}
+                      {log.user} · {relativeTime(log.date)}
                     </p>
                   </div>
                 </div>

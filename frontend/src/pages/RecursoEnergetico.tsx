@@ -53,12 +53,12 @@ import { RecursoSkeleton } from "@/components/skeletons/PageSkeleton";
 import { downloadResourceReport, UtilityReportPeriodType } from "@/lib/api";
 import { toast } from "sonner";
 
-/* ─── estilos de gráficos ─────────────────────────────────────────────── */
+// estilos de gráficos
 const axisStroke = "hsl(var(--muted-foreground))";
 const gridStroke  = "hsl(var(--border))";
 const tickStyle   = { fill: "hsl(var(--foreground))", fontSize: 12 };
 
-/* ─── catálogo de recursos ────────────────────────────────────────────── */
+// catálogo de recursos
 const RESOURCE_UI: Record<
   string,
   { title: string; subtitle: string; icon: typeof Fuel; colorClass: string }
@@ -149,7 +149,7 @@ function triggerBlobDownload(blob: Blob, filename: string): void {
   URL.revokeObjectURL(url);
 }
 
-/* ─── componente principal ────────────────────────────────────────────── */
+// componente principal
 export default function RecursoEnergetico() {
   const { code = "" } = useParams();
   const now = new Date();
@@ -210,7 +210,7 @@ export default function RecursoEnergetico() {
     [data?.monthly],
   );
 
-  /* ── handlers ── */
+  /* handlers */
   const onDownloadReport = async () => {
     try {
       setDownloadingReport(true);
@@ -231,7 +231,7 @@ export default function RecursoEnergetico() {
     }
   };
 
-  /* ── validación de código ── */
+  /* validación de código */
   if (!ui) {
     return (
       <DashboardLayout>
@@ -250,7 +250,7 @@ export default function RecursoEnergetico() {
     <DashboardLayout>
       <div className="space-y-6">
 
-        {/* ── cabecera ── */}
+        {/* cabecera */}
         <div className="flex items-start justify-between gap-4">
           <div>
             <h2 className="text-xl font-bold text-foreground">{ui.title}</h2>
@@ -264,7 +264,7 @@ export default function RecursoEnergetico() {
           </div>
         </div>
 
-        {/* ── filtro de período ── */}
+        {/* filtro de período */}
         <DateRangeFilter selectedMonths={months} onMonthsChange={setMonths} />
 
         {isError && (
@@ -273,7 +273,7 @@ export default function RecursoEnergetico() {
           </Card>
         )}
 
-        {/* ── KPI cards ── */}
+        {/* KPI cards */}
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
           {(data?.cards ?? []).map((metric, index) => {
             const MetricIcon = index === 0 ? Icon : index === 1 ? TrendingUp : TrendingDown;
@@ -300,7 +300,7 @@ export default function RecursoEnergetico() {
           })}
         </div>
 
-        {/* ── gráficos ── */}
+        {/* gráficos */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
           {/* tendencia mensual + predicción ML */}
           <Card>
@@ -362,7 +362,7 @@ export default function RecursoEnergetico() {
           </Card>
         </div>
 
-        {/* ── evolución de costo ── */}
+        {/* evolución de costo */}
         <Card>
           <CardHeader>
             <CardTitle className="text-base">Evolución del Costo Mensual (USD)</CardTitle>
@@ -380,7 +380,7 @@ export default function RecursoEnergetico() {
           </CardContent>
         </Card>
 
-        {/* ── tabla de consumo histórico ── */}
+        {/* tabla de consumo histórico */}
         <Card>
           <CardHeader>
             <CardTitle className="text-base">
@@ -442,7 +442,7 @@ export default function RecursoEnergetico() {
           </CardContent>
         </Card>
 
-        {/* ── reporte PDF ── */}
+        {/* reporte PDF */}
         <Card>
           <CardHeader>
             <CardTitle className="text-base">Reporte PDF: {ui.title}</CardTitle>
@@ -535,7 +535,7 @@ export default function RecursoEnergetico() {
           </CardContent>
         </Card>
 
-        {/* ── alertas activas ── */}
+        {/* alertas activas */}
         <Card>
           <CardHeader>
             <CardTitle className="text-base">Alertas del Recurso</CardTitle>

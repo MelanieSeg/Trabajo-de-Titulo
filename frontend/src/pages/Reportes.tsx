@@ -79,7 +79,7 @@ export default function Reportes() {
                 <FileText className="h-5 w-5 text-primary shrink-0" />
                 <div className="flex-1 min-w-0">
                   <p className="text-sm font-medium">{report.name}</p>
-                  <p className="text-xs text-muted-foreground">{report.date} — {report.size}</p>
+                  <p className="text-xs text-muted-foreground">{report.date} · {report.size}</p>
                 </div>
                 <Badge variant="secondary">{report.type}</Badge>
                 <Button variant="ghost" size="sm" onClick={() => handleDownloadReport(report.name)}>

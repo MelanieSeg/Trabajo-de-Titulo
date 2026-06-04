@@ -54,7 +54,7 @@ const App = () => (
           <AuthProvider>
             <Suspense fallback={<div className="min-h-screen flex items-center justify-center text-muted-foreground">Cargando...</div>}>
               <Routes>
-                {/* Public routes - redirige al dashboard si ya está autenticado */}
+                {/* Rutas públicas, redirige al dashboard si está autenticado */}
                 <Route
                   path="/login"
                   element={

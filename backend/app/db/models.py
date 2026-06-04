@@ -455,7 +455,7 @@ class ResourceMonthlyConsumption(Base):
 
 
 class FuelTransaction(Base):
-    """Registro real de operación de flota — consumo observado en terreno."""
+    """Registro real de operación de flota - consumo observado en terreno."""
     __tablename__ = "fuel_transactions"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)

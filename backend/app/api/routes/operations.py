@@ -7,7 +7,8 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 
-from app.api.deps import get_db_session
+from app.api.deps import get_db_session, require_admin
+from app.db.models import User
 from app.schemas.api import OperationsSettingsUpdate, OperationsUserCreate
 from app.services import operations_service
 from app.services.activity_service import log_activity
@@ -43,7 +44,11 @@ def resolve_all_alerts(db: Session = Depends(get_db_session)) -> dict[str, Any]:
 
 
 @router.post("/users", response_model=dict[str, Any], status_code=status.HTTP_201_CREATED)
-def create_user(payload: OperationsUserCreate, db: Session = Depends(get_db_session)) -> dict[str, Any]:
+def create_user(
+    payload: OperationsUserCreate,
+    db: Session = Depends(get_db_session),
+    _admin: User = Depends(require_admin),
+) -> dict[str, Any]:
     try:
         response = operations_service.create_user(
             db,
@@ -62,7 +67,11 @@ def create_user(payload: OperationsUserCreate, db: Session = Depends(get_db_sess
 
 
 @router.post("/settings", response_model=dict[str, Any])
-def update_settings(payload: OperationsSettingsUpdate, db: Session = Depends(get_db_session)) -> dict[str, Any]:
+def update_settings(
+    payload: OperationsSettingsUpdate,
+    db: Session = Depends(get_db_session),
+    _admin: User = Depends(require_admin),
+) -> dict[str, Any]:
     result = operations_service.update_settings(db, payload.model_dump(exclude_none=True))
     db.commit()
     return result

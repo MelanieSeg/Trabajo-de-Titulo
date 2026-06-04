@@ -2,7 +2,7 @@ import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { DashboardLayout } from "@/components/DashboardLayout";
 
-/* ── Primitivos internos ─────────────────────────────────────────────────── */
+// Primitivos internos
 
 function SkHeader({ titleW = "w-56", subtitleW = "w-80" }: { titleW?: string; subtitleW?: string }) {
   return (
@@ -122,7 +122,7 @@ function SkListCard({
   );
 }
 
-/* ── Skeletons de página completa ────────────────────────────────────────── */
+// Skeletons de página completa
 
 export function DashboardSkeleton() {
   return (
@@ -773,7 +773,7 @@ export function FiscalizacionSkeleton() {
   );
 }
 
-/* ── Skeletons parciales (PrediccionesCombustible) ───────────────────────── */
+// Skeletons parciales (PrediccionesCombustible)
 
 export function ModeloEstadoSkeleton() {
   return (

@@ -166,7 +166,7 @@ export default function PrediccionesCombustible() {
           </div>
         </div>
 
-        {/* ── Estado del modelo ── */}
+        {/* Estado del modelo */}
         {isLoadingModelo ? <ModeloEstadoSkeleton /> : modeloEstado && (
           <Card className={modeloEstado.trained_with_company_data
             ? "border-green-500/30 bg-green-500/5"
@@ -234,7 +234,7 @@ export default function PrediccionesCombustible() {
           </CardContent>
         </Card>
 
-        {/* ── SECCIÓN 1: Formulario ── */}
+        {/* SECCIÓN 1: Formulario */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           <Card>
             <CardHeader>
@@ -384,7 +384,7 @@ export default function PrediccionesCombustible() {
           </div>
         </div>
 
-        {/* ── SECCIÓN 2: Escenario de optimización ── */}
+        {/* SECCIÓN 2: Escenario de optimización */}
         {result && (
           <Card className="border-green-500/30 bg-green-500/5">
             <CardHeader>
@@ -435,7 +435,7 @@ export default function PrediccionesCombustible() {
           </Card>
         )}
 
-        {/* ── SECCIÓN 3: Verificación real vs predicho ── */}
+        {/* SECCIÓN 3: Verificación real vs predicho */}
         {result && (
           <Card>
             <CardHeader>

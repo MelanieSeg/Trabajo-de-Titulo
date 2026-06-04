@@ -73,7 +73,7 @@ export default function Predicciones() {
   return (
     <DashboardLayout>
       <div className="space-y-6">
-        {/* ── Header ── */}
+        {/* Header */}
         <div className="flex items-center justify-between">
           <div>
             <h2 className="text-xl font-bold text-foreground">Predicciones ML</h2>
@@ -87,7 +87,7 @@ export default function Predicciones() {
 
         {isError && <Card className="p-4 text-sm text-destructive">No se pudieron cargar predicciones.</Card>}
 
-        {/* ── KPIs ── */}
+        {/* KPIs */}
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
           <Card>
             <CardContent className="p-4 text-center">
@@ -122,7 +122,7 @@ export default function Predicciones() {
           </Card>
         </div>
 
-        {/* ── Modelos Campeones ── */}
+        {/* Modelos Campeones */}
         <Card>
           <CardHeader>
             <CardTitle className="text-base">Modelos Campeones</CardTitle>
@@ -166,7 +166,7 @@ export default function Predicciones() {
           </CardContent>
         </Card>
 
-        {/* ── KPIs de flota combustible ── */}
+        {/* KPIs de flota combustible */}
         {flota && flota.total_registros_analizados > 0 && (
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
             <Card>
@@ -234,7 +234,7 @@ export default function Predicciones() {
           </div>
         )}
 
-        {/* ── Anomalías de Flota — resumen con link a /anomalias ── */}
+        {/* Anomalías de Flota - resumen con link a /anomalias */}
         {flota && flota.anomalias.length > 0 && (
           <Card className="border-orange-500/20">
             <CardContent className="p-4 flex items-center justify-between gap-4">
@@ -261,7 +261,7 @@ export default function Predicciones() {
           </Card>
         )}
 
-        {/* ── Recomendaciones (agua/electricidad) ── */}
+        {/* Recomendaciones (agua/electricidad) */}
         <Card>
           <CardHeader>
             <CardTitle className="text-base">Recomendaciones de Optimización</CardTitle>
