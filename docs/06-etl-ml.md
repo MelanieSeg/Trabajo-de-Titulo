@@ -45,3 +45,35 @@ Predicción de consumo mensual de electricidad y agua para horizonte futuro.
 - Se generan alertas cuando la predicción proyecta incrementos por sobre umbrales.
 - Predicciones y precisión por utilidad se reflejan en el dashboard junto con histórico.
 - Comparativas anuales incluyen escenario sin software vs escenario optimizado/predictivo para visualizar ahorro proyectado.
+
+## Pruebas de rendimiento para informe
+
+El backend incluye un runner local para generar evidencia capturable del procesamiento CSV y del benchmark ML:
+
+```bash
+cd backend
+# Usar el entorno Python del backend; si faltan dependencias:
+python3 -m pip install -r requirements.txt
+python3 scripts/performance_report.py --preset standard
+```
+
+Salidas generadas:
+- `backend/reports/performance/performance_report.html`: reporte visual para capturas.
+- `backend/reports/performance/performance_report.md`: version Markdown para documentacion.
+- `backend/reports/performance/performance_summary.csv`: resumen de tiempos, filas procesadas y throughput.
+- `backend/reports/performance/model_benchmark.csv`: metricas por modelo y utilidad.
+
+Modos disponibles:
+- `--mode analysis`: lectura CSV, limpieza, consolidacion mensual y entrenamiento ML en una base temporal aislada.
+- `--mode full-etl`: ejecuta el ETL completo del backend, incluyendo distribuciones por area y recursos.
+
+Presets disponibles:
+- `--preset quick`: dataset pequeno de ejemplo.
+- `--preset standard`: ejemplo + datasets empresariales 2020-2026.
+- `--preset full`: datasets empresariales completos 2000-2026.
+
+Metricas reportadas:
+- Tiempo de procesamiento CSV, filas por segundo, filas procesadas y rechazadas.
+- Registros mensuales consolidados usados para entrenamiento.
+- Modelo campeon por utilidad.
+- MAE, MAPE, R2 y precision estimada para RandomForest, GradientBoosting, KNN, BayesianRidge y LinearRegression.

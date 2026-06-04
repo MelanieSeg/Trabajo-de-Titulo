@@ -145,6 +145,7 @@ docker compose up --build
 - `scripts/down.sh`
 - `scripts/reset-db.sh`
 - `scripts/generate_enterprise_utility_datasets.py` (genera datasets gigantes de electricidad y agua)
+- `backend/scripts/performance_report.py` (genera reportes HTML/Markdown/CSV con rendimiento ETL + métricas ML)
 
 ## 9.1 Datasets gigantes incluidos
 
