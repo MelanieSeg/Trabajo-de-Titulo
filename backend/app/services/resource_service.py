@@ -21,8 +21,10 @@ from app.utils.date_utils import month_label, next_month
 
 # Tasa de conversión CLP → USD (aproximación operacional)
 _CLP_PER_USD: float = 950.0
-# Factor de emisiones diésel (kg CO₂ / litro)
+# Factores de emisiones por tipo de combustible (kg CO₂ / litro)
 _CO2_DIESEL_KG_PER_LITER: float = 2.68
+_CO2_GASOIL_KG_PER_LITER: float = 1.89
+_CO2_FACTOR: dict[str, float] = {"D": _CO2_DIESEL_KG_PER_LITER, "G": _CO2_GASOIL_KG_PER_LITER}
 
 AREA_WEIGHTS = [
     ("Producción", 30.0),
@@ -504,17 +506,16 @@ def _sync_fleet_areas(
     record_id: int,
     year: int,
     month: int,
-    fuel_type: str,
 ) -> None:
     """Reemplaza las áreas del registro con la distribución real por categoría de vehículo
-    para el tipo de combustible indicado ('D' o 'G')."""
+    para todos los tipos de combustible de flota (Diésel y Gas Oil)."""
     cat_rows = db.execute(
         select(
             FuelTransaction.vehicle_cat,
             func.sum(FuelTransaction.fuel_liters_real).label("liters"),
         )
         .where(
-            FuelTransaction.fuel_type == fuel_type,
+            FuelTransaction.fuel_type.in_(["D", "G"]),
             FuelTransaction.fuel_liters_real > 0,
             extract("year",  FuelTransaction.fecha) == year,
             extract("month", FuelTransaction.fecha) == month,
@@ -571,7 +572,7 @@ def sync_diesel_from_transactions(db: Session) -> int:
                 FuelTransaction.fuel_liters_real * FuelTransaction.precio_litro_clp
             ).label("total_clp"),
         )
-        .where(FuelTransaction.fuel_type == "D", FuelTransaction.fuel_liters_real > 0)
+        .where(FuelTransaction.fuel_type.in_(["D", "G"]), FuelTransaction.fuel_liters_real > 0)
         .group_by(
             extract("year",  FuelTransaction.fecha),
             extract("month", FuelTransaction.fecha),
@@ -597,7 +598,7 @@ def sync_diesel_from_transactions(db: Session) -> int:
         month = int(row.month)
         total_liters     = round(float(row.total_liters or 0), 4)
         cost_usd         = round(float(row.total_clp or 0) / _CLP_PER_USD, 4)
-        emissions_tco2e  = round(total_liters * _CO2_DIESEL_KG_PER_LITER / 1000.0, 6)
+        emissions_tco2e  = round(total_liters * _CO2_DIESEL_KG_PER_LITER / 1000.0, 6)  # factor aproximado para flota mixta
 
         record = ResourceMonthlyConsumption(
             resource_type_id=resource.id,
@@ -612,7 +613,7 @@ def sync_diesel_from_transactions(db: Session) -> int:
         db.add(record)
         db.flush()
 
-        _sync_fleet_areas(db, record_id=record.id, year=year, month=month, fuel_type="D")
+        _sync_fleet_areas(db, record_id=record.id, year=year, month=month)
         count += 1
 
     return count
@@ -679,6 +680,43 @@ def get_resource_overview(db: Session, code: str, months: int = 12) -> dict[str,
     latest_month = int(latest["month"]) if latest else datetime.now(timezone.utc).month
     areas = _latest_area_breakdown(db, resource.id, latest_year, latest_month) if latest else []
 
+    fuel_breakdown: list[dict[str, Any]] = []
+    if code == "diesel":
+        breakdown_rows = db.execute(
+            select(
+                extract("year",  FuelTransaction.fecha).label("year"),
+                extract("month", FuelTransaction.fecha).label("month"),
+                FuelTransaction.fuel_type,
+                func.sum(FuelTransaction.fuel_liters_real).label("consumo"),
+                func.sum(
+                    FuelTransaction.fuel_liters_real * FuelTransaction.precio_litro_clp
+                ).label("total_clp"),
+            )
+            .where(FuelTransaction.fuel_type.in_(["D", "G"]), FuelTransaction.fuel_liters_real > 0)
+            .group_by(
+                extract("year",  FuelTransaction.fecha),
+                extract("month", FuelTransaction.fecha),
+                FuelTransaction.fuel_type,
+            )
+            .order_by(
+                extract("year",  FuelTransaction.fecha),
+                extract("month", FuelTransaction.fecha),
+                FuelTransaction.fuel_type,
+            )
+        ).all()
+        fuel_breakdown = [
+            {
+                "year":      int(r.year),
+                "month":     int(r.month),
+                "mes":       month_label(int(r.year), int(r.month)),
+                "fuel_type": r.fuel_type,
+                "consumo":   round(float(r.consumo or 0), 2),
+                "costo":     round(float(r.total_clp or 0) / _CLP_PER_USD, 2),
+                "co2_kg":    round(float(r.consumo or 0) * _CO2_FACTOR.get(r.fuel_type, _CO2_DIESEL_KG_PER_LITER), 2),
+            }
+            for r in breakdown_rows
+        ]
+
     return {
         "resource": {
             "code": resource.code,
@@ -688,6 +726,7 @@ def get_resource_overview(db: Session, code: str, months: int = 12) -> dict[str,
             "regulatory_body": resource.regulatory_body,
             "description": resource.description,
         },
+        "fuel_breakdown": fuel_breakdown,
         "cards": [
             {
                 "label": "Consumo Actual",

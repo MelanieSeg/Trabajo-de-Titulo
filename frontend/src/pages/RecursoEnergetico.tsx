@@ -18,9 +18,12 @@ import {
   Bar,
   BarChart,
   CartesianGrid,
+  Cell,
   Legend,
   Line,
   LineChart,
+  Pie,
+  PieChart,
   XAxis,
   YAxis,
 } from "recharts";
@@ -50,7 +53,7 @@ import {
 } from "@/components/ui/table";
 import { useResourceOverview } from "@/hooks/useResourceOverview";
 import { RecursoSkeleton } from "@/components/skeletons/PageSkeleton";
-import { downloadResourceReport, UtilityReportPeriodType } from "@/lib/api";
+import { downloadResourceReport, type FuelBreakdownPoint, UtilityReportPeriodType } from "@/lib/api";
 import { toast } from "sonner";
 
 // estilos de gráficos
@@ -70,8 +73,8 @@ const RESOURCE_UI: Record<
     colorClass: "text-emerald-600",
   },
   diesel: {
-    title: "Consumo de Diésel",
-    subtitle: "Basado en transacciones reales de flota registradas en el sistema",
+    title: "Consumo de Combustibles",
+    subtitle: "Datos de flota: Diésel y Gas Oil",
     icon: Factory,
     colorClass: "text-amber-600",
   },
@@ -157,6 +160,10 @@ export default function RecursoEnergetico() {
   /* filtro de rango */
   const [months, setMonths] = useState(12);
 
+  /* filtro de tipo de combustible (solo aplica para diesel) */
+  const [fuelFilter, setFuelFilter] = useState<"all" | "D" | "G">("all");
+  const [tablePage,  setTablePage]  = useState(1);
+
   /* estado reporte PDF */
   const [downloadingReport, setDownloadingReport]       = useState(false);
   const [reportPeriodType,   setReportPeriodType]       = useState<UtilityReportPeriodType>("annual");
@@ -209,6 +216,34 @@ export default function RecursoEnergetico() {
     () => (data?.monthly ?? []).map((item) => ({ mes: item.mes, costo: item.costo })),
     [data?.monthly],
   );
+
+  const fuelBreakdown: FuelBreakdownPoint[] = data?.fuel_breakdown ?? [];
+  const hasGasOil = fuelBreakdown.some(r => r.fuel_type === "G");
+  const TABLE_PAGE_SIZE = 12;
+
+  const filteredBreakdown = useMemo(() => {
+    if (fuelFilter === "all") return fuelBreakdown;
+    return fuelBreakdown.filter(r => r.fuel_type === fuelFilter);
+  }, [fuelBreakdown, fuelFilter]);
+
+  const totalTablePages = Math.ceil(filteredBreakdown.length / TABLE_PAGE_SIZE);
+
+  const pagedBreakdown = useMemo(
+    () => filteredBreakdown.slice((tablePage - 1) * TABLE_PAGE_SIZE, tablePage * TABLE_PAGE_SIZE),
+    [filteredBreakdown, tablePage],
+  );
+
+  const donutData = useMemo(() => {
+    if (!hasGasOil) return [];
+    const totalD = fuelBreakdown.filter(r => r.fuel_type === "D").reduce((s, r) => s + r.consumo, 0);
+    const totalG = fuelBreakdown.filter(r => r.fuel_type === "G").reduce((s, r) => s + r.consumo, 0);
+    const total = totalD + totalG;
+    if (total === 0) return [];
+    return [
+      { name: "Diésel",  value: totalD, pct: ((totalD / total) * 100).toFixed(1), color: "hsl(24 82% 50%)"  },
+      { name: "Gas Oil", value: totalG, pct: ((totalG / total) * 100).toFixed(1), color: "hsl(185 75% 45%)" },
+    ];
+  }, [fuelBreakdown, hasGasOil]);
 
   /* handlers */
   const onDownloadReport = async () => {
@@ -380,18 +415,128 @@ export default function RecursoEnergetico() {
           </CardContent>
         </Card>
 
+        {/* donut + historial (solo diesel) */}
+        {code === "diesel" && donutData.length > 0 && (
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base">Distribución por tipo de combustible</CardTitle>
+            </CardHeader>
+            <CardContent className="flex flex-col sm:flex-row items-center gap-6">
+              <PieChart width={180} height={180}>
+                <Pie data={donutData} dataKey="value" innerRadius={52} outerRadius={80} paddingAngle={3}>
+                  {donutData.map((entry) => (
+                    <Cell key={entry.name} fill={entry.color} />
+                  ))}
+                </Pie>
+              </PieChart>
+              <div className="space-y-2 text-sm">
+                {donutData.map((entry) => (
+                  <div key={entry.name} className="flex items-center gap-2">
+                    <span className="inline-block h-3 w-3 rounded-full" style={{ background: entry.color }} />
+                    <span className="font-medium">{entry.name}</span>
+                    <span className="text-muted-foreground">{entry.pct}%</span>
+                    <span className="text-muted-foreground">
+                      ({entry.value.toLocaleString("es-CL", { maximumFractionDigits: 1 })} L)
+                    </span>
+                  </div>
+                ))}
+                <p className="text-xs text-muted-foreground pt-1">
+                  Total acumulado en el período seleccionado
+                </p>
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
         {/* tabla de consumo histórico */}
         <Card>
           <CardHeader>
-            <CardTitle className="text-base">
-              Historial de Consumo: {ui.title}
-            </CardTitle>
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+              <CardTitle className="text-base">
+                Historial de Consumo{code === "diesel" ? ": Combustibles de Flota" : `: ${ui.title}`}
+              </CardTitle>
+              {code === "diesel" && (
+                <div className="flex gap-1">
+                  {(["all", "D", "G"] as const).map((f) => (
+                    <button
+                      key={f}
+                      onClick={() => { setFuelFilter(f); setTablePage(1); }}
+                      className={`rounded px-3 py-1 text-xs border transition-colors ${
+                        fuelFilter === f
+                          ? "bg-primary text-primary-foreground border-primary"
+                          : "hover:bg-muted"
+                      }`}
+                    >
+                      {f === "all" ? "Toda la flota" : f === "D" ? "Solo Diésel" : "Solo Gas Oil"}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
           </CardHeader>
           <CardContent>
-            {(data?.monthly ?? []).length === 0 ? (
+            {(code === "diesel" ? filteredBreakdown : data?.monthly ?? []).length === 0 ? (
               <p className="text-sm text-muted-foreground">
                 No hay datos históricos disponibles para el período seleccionado.
               </p>
+            ) : code === "diesel" ? (
+              <>
+                <div className="overflow-x-auto">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Período</TableHead>
+                        <TableHead>Tipo</TableHead>
+                        <TableHead className="text-right">Consumo (L)</TableHead>
+                        <TableHead className="text-right">Costo (USD)</TableHead>
+                        <TableHead className="text-right">CO₂ (kg)</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {pagedBreakdown.map((row) => (
+                        <TableRow key={`${row.year}-${row.month}-${row.fuel_type}`}>
+                          <TableCell>{row.mes}</TableCell>
+                          <TableCell>
+                            <span className={`text-xs font-medium ${row.fuel_type === "D" ? "text-amber-600" : "text-cyan-600"}`}>
+                              {row.fuel_type === "D" ? "Diésel" : "Gas Oil"}
+                            </span>
+                          </TableCell>
+                          <TableCell className="text-right">
+                            {row.consumo.toLocaleString("es-CL", { maximumFractionDigits: 1 })}
+                          </TableCell>
+                          <TableCell className="text-right">
+                            {row.costo.toLocaleString("es-CL", { maximumFractionDigits: 2 })}
+                          </TableCell>
+                          <TableCell className="text-right text-orange-600">
+                            {row.co2_kg.toLocaleString("es-CL", { maximumFractionDigits: 1 })}
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </div>
+                {totalTablePages > 1 && (
+                  <div className="flex items-center justify-between px-1 pt-3 text-xs text-muted-foreground">
+                    <span>Página {tablePage} de {totalTablePages} · {filteredBreakdown.length} registros</span>
+                    <div className="flex gap-1">
+                      <button
+                        className="rounded px-2.5 py-1 border hover:bg-muted disabled:opacity-40"
+                        disabled={tablePage === 1}
+                        onClick={() => setTablePage(p => p - 1)}
+                      >
+                        ← Anterior
+                      </button>
+                      <button
+                        className="rounded px-2.5 py-1 border hover:bg-muted disabled:opacity-40"
+                        disabled={tablePage === totalTablePages}
+                        onClick={() => setTablePage(p => p + 1)}
+                      >
+                        Siguiente →
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </>
             ) : (
               <div className="overflow-x-auto">
                 <Table>
@@ -423,11 +568,7 @@ export default function RecursoEnergetico() {
                           </TableCell>
                           <TableCell
                             className={`text-right text-xs ${
-                              changePct === null
-                                ? "text-muted-foreground"
-                                : changePct > 0
-                                ? "text-destructive"
-                                : "text-green-600"
+                              changePct === null ? "text-muted-foreground" : changePct > 0 ? "text-destructive" : "text-green-600"
                             }`}
                           >
                             {changePct === null ? "primer mes" : `${changePct > 0 ? "+" : ""}${changePct.toFixed(1)}%`}

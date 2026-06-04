@@ -762,8 +762,19 @@ export interface ResourceOverviewAlert {
   created_at: string;
 }
 
+export interface FuelBreakdownPoint {
+  year: number;
+  month: number;
+  mes: string;
+  fuel_type: "D" | "G";
+  consumo: number;
+  costo: number;
+  co2_kg: number;
+}
+
 export interface ResourceOverview {
   resource: ResourceCatalogItem;
+  fuel_breakdown: FuelBreakdownPoint[];
   cards: ResourceOverviewCard[];
   monthly: ResourceMonthlyPoint[];
   areas: ResourceAreaPoint[];

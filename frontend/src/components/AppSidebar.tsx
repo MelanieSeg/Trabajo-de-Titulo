@@ -24,7 +24,7 @@ const fiscalizedEnergyItems = [
   { title: "Consumo Eléctrico", url: "/electricidad", icon: Zap },
   { title: "Consumo de Agua", url: "/agua", icon: Droplets },
   { title: "Gas Natural", url: "/recursos/gas_natural", icon: Fuel },
-  { title: "Diésel", url: "/recursos/diesel", icon: Factory },
+  { title: "Combustibles de Flota", url: "/recursos/diesel", icon: Factory },
   { title: "Gasolina", url: "/recursos/gasolina", icon: Flame },
   { title: "GLP / Propano", url: "/recursos/glp_propano", icon: Wind },
   { title: "Vapor Térmico", url: "/recursos/vapor_termica", icon: Gauge },
