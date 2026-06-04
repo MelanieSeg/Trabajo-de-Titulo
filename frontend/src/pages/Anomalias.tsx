@@ -28,10 +28,11 @@ export default function Anomalias() {
   const { data, isLoading, isError } = useOperationsOverview();
   const queryClient = useQueryClient();
 
-  const { data: flota } = useQuery<AnalisisFlotaResult>({
+  const { data: flota, isError: isFlotaError, error: flotaError } = useQuery<AnalisisFlotaResult>({
     queryKey: ["analisis-flota"],
     queryFn: getAnalisisFlota,
-    staleTime: 1000 * 60 * 5,
+    staleTime: 1000 * 60 * 2,
+    retry: 1,
   });
 
   const anomalies = data?.anomalies.items ?? [];
@@ -162,6 +163,12 @@ export default function Anomalias() {
           </CardContent>
         </Card>
 
+        {isFlotaError && (
+          <Card className="p-4 text-sm text-destructive">
+            Error al analizar flota: {flotaError instanceof Error ? flotaError.message : "No se pudo conectar con el modelo de combustible."}
+          </Card>
+        )}
+
         {/* KPIs flota combustible */}
         {anomaliasFlota.length > 0 && (
           <>
@@ -169,7 +176,7 @@ export default function Anomalias() {
               <Fuel className="h-5 w-5 text-orange-500" />
               <h3 className="font-semibold text-foreground">Anomalías Detectadas por IA: Flota de Combustible</h3>
               <Badge variant="secondary" className="bg-orange-100 text-orange-800">
-                Modelo Random Forest · err.rel 6.13%
+                Modelo Random Forest · err.rel {(flota?.modelo_info?.error_relativo_pct ?? 6.13).toFixed(2)}%
               </Badge>
               <Button
                 variant="outline"

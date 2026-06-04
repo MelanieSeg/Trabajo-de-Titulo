@@ -369,7 +369,10 @@ def analisis_flota(db: Session = Depends(get_db)) -> AnalisisFlotaResponse:
 
     for t in transacciones:
         real = float(t.fuel_liters_real)  # type: ignore[arg-type]
-        pred = _predecir_litros(model, t.dist_km, t.km_per_liter, t.vehicle_cat, t.fuel_type)
+        try:
+            pred = _predecir_litros(model, t.dist_km, t.km_per_liter, t.vehicle_cat, t.fuel_type)
+        except Exception:
+            continue
         desvio_pct = ((real - pred) / pred * 100) if pred > 0 else 0.0
         precision_acum += max(0.0, 100.0 - abs(desvio_pct))
 

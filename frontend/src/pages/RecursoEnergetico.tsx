@@ -233,6 +233,24 @@ export default function RecursoEnergetico() {
     [filteredBreakdown, tablePage],
   );
 
+  const filteredChartData = useMemo(() => {
+    if (code !== "diesel" || fuelFilter === "all" || !fuelBreakdown.length) return mergedMonthly;
+    return fuelBreakdown
+      .filter(r => r.fuel_type === fuelFilter)
+      .map(r => ({
+        year: r.year, month: r.month, mes: r.mes,
+        consumo: r.consumo, costo: r.costo,
+        prediccion: null as number | null,
+      }));
+  }, [code, fuelFilter, fuelBreakdown, mergedMonthly]);
+
+  const filteredCostData = useMemo(() => {
+    if (code !== "diesel" || fuelFilter === "all" || !fuelBreakdown.length) return costData;
+    return fuelBreakdown
+      .filter(r => r.fuel_type === fuelFilter)
+      .map(r => ({ mes: r.mes, costo: r.costo }));
+  }, [code, fuelFilter, fuelBreakdown, costData]);
+
   const donutData = useMemo(() => {
     if (!hasGasOil) return [];
     const totalD = fuelBreakdown.filter(r => r.fuel_type === "D").reduce((s, r) => s + r.consumo, 0);
@@ -344,7 +362,7 @@ export default function RecursoEnergetico() {
             </CardHeader>
             <CardContent>
               <ChartContainer config={chartConfig} className="h-[300px] w-full">
-                <LineChart data={mergedMonthly}>
+                <LineChart data={filteredChartData}>
                   <CartesianGrid strokeDasharray="3 3" stroke={gridStroke} />
                   <XAxis dataKey="mes" stroke={axisStroke} tick={tickStyle} tickLine={{ stroke: axisStroke }} />
                   <YAxis stroke={axisStroke} tick={tickStyle} tickLine={{ stroke: axisStroke }} />
@@ -404,7 +422,7 @@ export default function RecursoEnergetico() {
           </CardHeader>
           <CardContent>
             <ChartContainer config={chartConfig} className="h-[260px] w-full">
-              <BarChart data={costData}>
+              <BarChart data={filteredCostData}>
                 <CartesianGrid strokeDasharray="3 3" stroke={gridStroke} />
                 <XAxis dataKey="mes" stroke={axisStroke} tick={tickStyle} tickLine={{ stroke: axisStroke }} />
                 <YAxis stroke={axisStroke} tick={tickStyle} tickLine={{ stroke: axisStroke }} />
@@ -475,11 +493,11 @@ export default function RecursoEnergetico() {
             </div>
           </CardHeader>
           <CardContent>
-            {(code === "diesel" ? filteredBreakdown : data?.monthly ?? []).length === 0 ? (
+            {(code === "diesel" ? (filteredBreakdown.length > 0 ? filteredBreakdown : data?.monthly ?? []) : data?.monthly ?? []).length === 0 ? (
               <p className="text-sm text-muted-foreground">
                 No hay datos históricos disponibles para el período seleccionado.
               </p>
-            ) : code === "diesel" ? (
+            ) : code === "diesel" && filteredBreakdown.length > 0 ? (
               <>
                 <div className="overflow-x-auto">
                   <Table>

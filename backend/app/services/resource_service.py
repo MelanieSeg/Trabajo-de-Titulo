@@ -687,12 +687,12 @@ def get_resource_overview(db: Session, code: str, months: int = 12) -> dict[str,
                 extract("year",  FuelTransaction.fecha).label("year"),
                 extract("month", FuelTransaction.fecha).label("month"),
                 FuelTransaction.fuel_type,
-                func.sum(FuelTransaction.fuel_liters_real).label("consumo"),
+                func.sum(func.coalesce(FuelTransaction.fuel_liters_real, 0.0)).label("consumo"),
                 func.sum(
-                    FuelTransaction.fuel_liters_real * FuelTransaction.precio_litro_clp
+                    func.coalesce(FuelTransaction.fuel_liters_real, 0.0) * FuelTransaction.precio_litro_clp
                 ).label("total_clp"),
             )
-            .where(FuelTransaction.fuel_type.in_(["D", "G"]), FuelTransaction.fuel_liters_real > 0)
+            .where(FuelTransaction.fuel_type.in_(["D", "G"]))
             .group_by(
                 extract("year",  FuelTransaction.fecha),
                 extract("month", FuelTransaction.fecha),
