@@ -244,6 +244,13 @@ def predict_fuel(
     payload: FuelPredictionRequestWithFacility,
     db: Session = Depends(get_db),
 ) -> FuelPredictionResponse:
+    # Rendimiento mínimo físico aceptable por tipo de vehículo (km/L).
+    # Si la predicción implica un rendimiento por debajo de esto, el modelo
+    # recibió features demasiado incompletas (dist_km muy corta sin km_per_liter).
+    _KM_PER_LITER_MIN: dict[str, float] = {
+        "Van": 4.0, "Car": 5.0, "Bus": 1.5, "Truck": 1.5
+    }
+
     model = _get_model()
     co2_factor = _CO2_FACTOR[payload.fuel_type]
     fue_imputado = payload.km_per_liter is None
@@ -252,6 +259,24 @@ def predict_fuel(
         model, payload.dist_km, payload.km_per_liter,
         payload.vehicle_cat, payload.fuel_type,
     )
+
+    # Sanidad: verificar que el rendimiento implícito sea físicamente posible.
+    # Sin km_per_liter, el modelo imputa la mediana del entrenamiento y puede
+    # producir predicciones absurdas para distancias cortas.
+    if fuel_liters > 0:
+        km_pl_implicito = payload.dist_km / fuel_liters
+        km_pl_min = _KM_PER_LITER_MIN.get(payload.vehicle_cat, 2.0)
+        if km_pl_implicito < km_pl_min:
+            raise HTTPException(
+                status_code=422,
+                detail=(
+                    f"La predicción para {payload.dist_km} km sin km_por_litro informado "
+                    f"produjo un rendimiento implícito de {km_pl_implicito:.1f} km/L, "
+                    f"que es físicamente imposible para un {payload.vehicle_cat} "
+                    f"(mínimo esperado: {km_pl_min} km/L). "
+                    "Ingresa el rendimiento real del vehículo (km/litro) para obtener una predicción válida."
+                ),
+            )
 
     km_pl_efectivo = (
         round(payload.dist_km / fuel_liters, 2) if fue_imputado and fuel_liters > 0

@@ -103,10 +103,12 @@ export default function PrediccionesCombustible() {
 
   useEffect(() => { cargarHistorial(); }, [cargarHistorial]);
 
+  const distKmNum = parseFloat(form.dist_km);
+
   const isFormValid =
     form.vehicle_cat !== "" &&
     form.fuel_type   !== "" &&
-    parseFloat(form.dist_km)          > 0 &&
+    distKmNum > 0 &&
     parseFloat(form.precio_litro_clp) > 0;
 
   function handleFuelTypeChange(v: FuelType) {
@@ -277,13 +279,13 @@ export default function PrediccionesCombustible() {
               <div className="space-y-2">
                 <Label>Distancia total del período (km)</Label>
                 <Input
-                  type="number" min={1} step={1} placeholder="Ej: 1.200"
+                  type="number" min={1} step={1} placeholder="Ej: 500"
                   value={form.dist_km}
                   onChange={(e) => setForm((f) => ({ ...f, dist_km: e.target.value }))}
                 />
                 <p className="text-xs text-muted-foreground">
                   Kilómetros acumulados del vehículo en el período (semana, mes).
-                  No por viaje individual; el modelo fue entrenado con consumos agregados por período.
+                  El modelo mejora su precisión para tu flota al reentrenarlo con datos reales propios.
                 </p>
               </div>
 
@@ -297,11 +299,20 @@ export default function PrediccionesCombustible() {
                   value={form.km_per_liter}
                   onChange={(e) => setForm((f) => ({ ...f, km_per_liter: e.target.value }))}
                 />
-                <p className="text-xs text-muted-foreground">
-                  Si no se ingresa, el modelo usa la eficiencia promedio del dataset de entrenamiento
-                  para el tipo de vehículo seleccionado (imputación por mediana).
-                  Referencia: Van ≈ 10–14 · Camión ≈ 4–8 · Bus ≈ 5–9 km/L.
-                </p>
+                {/* Aviso cuando la distancia es baja y km/L no está informado */}
+                {form.km_per_liter.trim() === "" && parseFloat(form.dist_km) > 0 && parseFloat(form.dist_km) < 200 ? (
+                  <p className="text-xs text-yellow-600 dark:text-yellow-400 flex items-start gap-1 font-medium">
+                    <TriangleAlert className="w-3.5 h-3.5 shrink-0 mt-0.5" />
+                    Para distancias cortas (&lt;200 km) el modelo puede producir resultados imprecisos
+                    sin km/L informado. Ingresa la eficiencia real del vehículo para mayor exactitud.
+                  </p>
+                ) : (
+                  <p className="text-xs text-muted-foreground">
+                    Si no se ingresa, el modelo usa la eficiencia promedio del dataset de entrenamiento
+                    para el tipo de vehículo seleccionado (imputación por mediana).
+                    Referencia: Van ≈ 10–14 · Camión ≈ 4–8 · Bus ≈ 5–9 km/L.
+                  </p>
+                )}
               </div>
 
               <div className="space-y-2">
