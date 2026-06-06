@@ -161,6 +161,7 @@ class FuelPredictionLogResponse(BaseModel):
 
 
 class FuelTransactionCreate(BaseModel):
+    facility_id: Optional[int] = Field(default=None, description="Instalación a la que pertenece esta transacción")
     vehicle_id: str = Field(..., min_length=1, max_length=50)
     vehicle_cat: Literal["Van", "Truck", "Bus", "Car"]
     fuel_type: Literal["D", "G"]
@@ -174,6 +175,7 @@ class FuelTransactionCreate(BaseModel):
 
 class FuelTransactionResponse(BaseModel):
     id: int
+    facility_id: Optional[int]
     vehicle_id: str
     vehicle_cat: str
     fuel_type: str
@@ -233,9 +235,13 @@ class AnalisisFlotaResponse(BaseModel):
 
 # Endpoints
 
+class FuelPredictionRequestWithFacility(FuelPredictionRequest):
+    facility_id: Optional[int] = Field(default=None, description="Instalación asociada a esta predicción")
+
+
 @router.post("/predict", response_model=FuelPredictionResponse)
 def predict_fuel(
-    payload: FuelPredictionRequest,
+    payload: FuelPredictionRequestWithFacility,
     db: Session = Depends(get_db),
 ) -> FuelPredictionResponse:
     model = _get_model()
@@ -282,6 +288,7 @@ def predict_fuel(
     )
 
     db.add(FuelPredictionLog(
+        facility_id=payload.facility_id,
         vehicle_cat=payload.vehicle_cat,
         fuel_type=payload.fuel_type,
         dist_km=payload.dist_km,
@@ -646,6 +653,7 @@ def create_transaccion(
     db: Session = Depends(get_db),
 ) -> FuelTransactionResponse:
     t = FuelTransaction(
+        facility_id=payload.facility_id,
         vehicle_id=payload.vehicle_id,
         vehicle_cat=payload.vehicle_cat,
         fuel_type=payload.fuel_type,

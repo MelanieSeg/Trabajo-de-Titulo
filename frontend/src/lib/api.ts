@@ -321,6 +321,15 @@ export async function resetPassword(
   return response;
 }
 
+export async function backendLogout(): Promise<void> {
+  try {
+    await request<void>("/auth/logout", { method: "POST" });
+  } catch {
+    // Si el backend falla (token ya expirado, red caída), de igual forma
+    // limpiamos el estado local para no bloquear al usuario.
+  }
+}
+
 export function logout(): void {
   clearToken();
 }
@@ -1246,6 +1255,7 @@ export function getFuelHistorial(limit = 20): Promise<FuelPredictionLogItem[]> {
 
 export interface FuelTransactionItem {
   id: number;
+  facility_id: number | null;
   vehicle_id: string;
   vehicle_cat: string;
   fuel_type: string;
@@ -1259,6 +1269,7 @@ export interface FuelTransactionItem {
 }
 
 export interface FuelTransactionCreate {
+  facility_id?: number | null;
   vehicle_id: string;
   vehicle_cat: "Van" | "Truck" | "Bus" | "Car";
   fuel_type: "D" | "G";

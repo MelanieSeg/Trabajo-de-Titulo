@@ -42,6 +42,15 @@ services:
     env_file:
       - ./db/credentials.env
     environment:
+      # SECRET_KEY: define esta variable en un .env raíz o como variable de entorno del host.
+      # El fallback es funcional para desarrollo local, NUNCA usar en producción.
+      # Generar clave segura: python -c "import secrets; print(secrets.token_hex(32))"
+      SECRET_KEY: ${SECRET_KEY:-ecoenergy_dev_only_insecure_key_change_before_production}
+      JWT_ALGORITHM: ${JWT_ALGORITHM:-HS256}
+      JWT_EXPIRATION_HOURS: ${JWT_EXPIRATION_HOURS:-24}
+      JWT_ISSUER: ${JWT_ISSUER:-eco-energy-api}
+      JWT_AUDIENCE: ${JWT_AUDIENCE:-eco-energy-app}
+      RESET_PASSWORD_TOKEN_EXPIRE_HOURS: ${RESET_PASSWORD_TOKEN_EXPIRE_HOURS:-1}
       CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:8081,http://127.0.0.1:8081,https://localhost:8081,https://127.0.0.1:8081}
       ETL_UPLOAD_DIR: ${ETL_UPLOAD_DIR:-/app/data/uploads}
       SAMPLE_CSV_PATH: ${SAMPLE_CSV_PATH:-/app/data/raw/sample_consumption.csv}

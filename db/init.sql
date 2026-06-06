@@ -92,8 +92,8 @@ CREATE TABLE IF NOT EXISTS monthly_consumptions (
     month INTEGER NOT NULL,
     electricity_kwh DOUBLE PRECISION NOT NULL,
     water_m3 DOUBLE PRECISION NOT NULL,
-    electricity_cost_usd DOUBLE PRECISION NOT NULL,
-    water_cost_usd DOUBLE PRECISION NOT NULL,
+    electricity_cost_usd NUMERIC(15,4) NOT NULL,
+    water_cost_usd NUMERIC(15,4) NOT NULL,
     co2_avoided_ton DOUBLE PRECISION NOT NULL DEFAULT 0,
     source VARCHAR(120) NOT NULL DEFAULT 'etl',
     quality_status VARCHAR(20) NOT NULL DEFAULT 'validated',
@@ -127,7 +127,7 @@ CREATE TABLE IF NOT EXISTS meter_monthly_readings (
     year INTEGER NOT NULL,
     month INTEGER NOT NULL,
     consumption_value DOUBLE PRECISION NOT NULL,
-    cost_usd DOUBLE PRECISION NOT NULL DEFAULT 0,
+    cost_usd NUMERIC(15,4) NOT NULL DEFAULT 0,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     CONSTRAINT uq_meter_month UNIQUE (meter_id, year, month),
     CONSTRAINT ck_meter_month_range CHECK (month >= 1 AND month <= 12),
@@ -179,6 +179,7 @@ CREATE TABLE IF NOT EXISTS app_users (
     must_change_password BOOLEAN NOT NULL DEFAULT FALSE,
     last_login_at TIMESTAMPTZ,
     is_active BOOLEAN NOT NULL DEFAULT TRUE,
+    token_version INTEGER NOT NULL DEFAULT 0,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     CONSTRAINT ck_app_user_status CHECK (status IN ('ACTIVE', 'SUSPENDED', 'DELETED', 'INACTIVE'))
@@ -321,7 +322,8 @@ CREATE TABLE IF NOT EXISTS etl_jobs (
     data_source_id INTEGER,
     started_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     finished_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    CONSTRAINT ck_etl_rows_non_negative CHECK (rows_processed >= 0 AND rows_rejected >= 0)
+    CONSTRAINT ck_etl_rows_non_negative CHECK (rows_processed >= 0 AND rows_rejected >= 0),
+    CONSTRAINT ck_etl_job_status CHECK (status IN ('pending', 'running', 'completed', 'failed', 'cancelled'))
 );
 
 CREATE TABLE IF NOT EXISTS etl_schedules (
@@ -487,7 +489,7 @@ CREATE TABLE IF NOT EXISTS resource_monthly_consumptions (
     year INTEGER NOT NULL,
     month INTEGER NOT NULL,
     consumption_value DOUBLE PRECISION NOT NULL,
-    cost_usd DOUBLE PRECISION NOT NULL DEFAULT 0,
+    cost_usd NUMERIC(15,4) NOT NULL DEFAULT 0,
     emissions_tco2e DOUBLE PRECISION NOT NULL DEFAULT 0,
     source VARCHAR(80) NOT NULL DEFAULT 'simulated',
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
@@ -520,7 +522,8 @@ ALTER TABLE app_users
     ADD COLUMN IF NOT EXISTS status VARCHAR(20) NOT NULL DEFAULT 'ACTIVE',
     ADD COLUMN IF NOT EXISTS role VARCHAR(30) NOT NULL DEFAULT 'USER',
     ADD COLUMN IF NOT EXISTS must_change_password BOOLEAN NOT NULL DEFAULT FALSE,
-    ADD COLUMN IF NOT EXISTS last_login_at TIMESTAMPTZ;
+    ADD COLUMN IF NOT EXISTS last_login_at TIMESTAMPTZ,
+    ADD COLUMN IF NOT EXISTS token_version INTEGER NOT NULL DEFAULT 0;
 
 ALTER TABLE companies
     ADD COLUMN IF NOT EXISTS legal_name VARCHAR(180),
@@ -573,6 +576,94 @@ ALTER TABLE meter_calibrations
 
 ALTER TABLE resource_area_distributions
     ADD COLUMN IF NOT EXISTS area_id INTEGER;
+
+-- Vincular transacciones y predicciones de flota a la jerarquía empresa→instalación
+ALTER TABLE fuel_transactions
+    ADD COLUMN IF NOT EXISTS facility_id INTEGER REFERENCES facilities(id) ON DELETE SET NULL;
+
+ALTER TABLE fuel_prediction_logs
+    ADD COLUMN IF NOT EXISTS facility_id INTEGER REFERENCES facilities(id) ON DELETE SET NULL;
+
+-- Migrar columnas monetarias de DOUBLE PRECISION a NUMERIC(15,4) para precisión exacta.
+-- Las vistas analíticas se deben recrear después de alterar tipos de columnas dependientes.
+DROP VIEW IF EXISTS v_company_monthly_consumption;
+DROP VIEW IF EXISTS v_open_alerts_by_facility;
+
+ALTER TABLE monthly_consumptions
+    ALTER COLUMN electricity_cost_usd TYPE NUMERIC(15,4),
+    ALTER COLUMN water_cost_usd TYPE NUMERIC(15,4);
+
+ALTER TABLE meter_monthly_readings
+    ALTER COLUMN cost_usd TYPE NUMERIC(15,4);
+
+ALTER TABLE resource_monthly_consumptions
+    ALTER COLUMN cost_usd TYPE NUMERIC(15,4);
+
+ALTER TABLE fuel_transactions
+    ALTER COLUMN precio_litro_clp TYPE NUMERIC(15,4);
+
+ALTER TABLE fuel_prediction_logs
+    ALTER COLUMN precio_litro_clp TYPE NUMERIC(15,4),
+    ALTER COLUMN costo_clp TYPE NUMERIC(15,4),
+    ALTER COLUMN ahorro_clp TYPE NUMERIC(15,4);
+
+-- Agregar CHECK de status a etl_jobs si no existe
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint WHERE conname = 'ck_etl_job_status'
+    ) THEN
+        ALTER TABLE etl_jobs
+            ADD CONSTRAINT ck_etl_job_status
+            CHECK (status IN ('pending', 'running', 'completed', 'failed', 'cancelled'));
+    END IF;
+
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint WHERE conname = 'ck_fuel_vehicle_cat'
+    ) THEN
+        ALTER TABLE fuel_transactions
+            ADD CONSTRAINT ck_fuel_vehicle_cat CHECK (vehicle_cat IN ('Van', 'Truck', 'Bus', 'Car'));
+    END IF;
+
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint WHERE conname = 'ck_fuel_type'
+    ) THEN
+        ALTER TABLE fuel_transactions
+            ADD CONSTRAINT ck_fuel_type CHECK (fuel_type IN ('D', 'G'));
+    END IF;
+
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint WHERE conname = 'ck_fuel_dist_km'
+    ) THEN
+        ALTER TABLE fuel_transactions
+            ADD CONSTRAINT ck_fuel_dist_km CHECK (dist_km > 0);
+    END IF;
+
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint WHERE conname = 'ck_fuel_liters_real'
+    ) THEN
+        ALTER TABLE fuel_transactions
+            ADD CONSTRAINT ck_fuel_liters_real CHECK (fuel_liters_real IS NULL OR fuel_liters_real > 0);
+    END IF;
+
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint WHERE conname = 'ck_fuel_km_per_liter'
+    ) THEN
+        ALTER TABLE fuel_transactions
+            ADD CONSTRAINT ck_fuel_km_per_liter CHECK (km_per_liter IS NULL OR km_per_liter > 0);
+    END IF;
+
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint WHERE conname = 'ck_fuel_precio'
+    ) THEN
+        ALTER TABLE fuel_transactions
+            ADD CONSTRAINT ck_fuel_precio CHECK (precio_litro_clp > 0);
+    END IF;
+END;
+$$;
+
+-- Sincronizar is_active existente con status actual
+UPDATE app_users SET is_active = (status = 'ACTIVE') WHERE is_active != (status = 'ACTIVE');
 
 INSERT INTO facility_areas (facility_id, name)
 SELECT DISTINCT mc.facility_id, BTRIM(ad.area_name)
@@ -968,46 +1059,12 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
-CREATE OR REPLACE FUNCTION normalize_app_user_role()
+-- Sincroniza is_active con el campo status para evitar inconsistencia entre ambos.
+-- is_active es derivado: TRUE cuando status='ACTIVE', FALSE en cualquier otro estado.
+CREATE OR REPLACE FUNCTION sync_user_is_active()
 RETURNS TRIGGER AS $$
-DECLARE
-    v_role_id INTEGER;
 BEGIN
-    NEW.role = UPPER(BTRIM(COALESCE(NULLIF(NEW.role, ''), 'USER')));
-
-    INSERT INTO roles (name, description)
-    VALUES (NEW.role, 'Rol creado automaticamente desde app_users.role.')
-    ON CONFLICT (name) DO UPDATE
-        SET name = EXCLUDED.name
-    RETURNING id INTO v_role_id;
-
-    RETURN NEW;
-END;
-$$ LANGUAGE plpgsql;
-
-CREATE OR REPLACE FUNCTION sync_app_user_role_membership()
-RETURNS TRIGGER AS $$
-DECLARE
-    v_role_id INTEGER;
-BEGIN
-    INSERT INTO roles (name, description)
-    VALUES (NEW.role, 'Rol creado automaticamente desde app_users.role.')
-    ON CONFLICT (name) DO UPDATE
-        SET name = EXCLUDED.name
-    RETURNING id INTO v_role_id;
-
-    IF TG_OP = 'UPDATE' AND OLD.role IS DISTINCT FROM NEW.role THEN
-        DELETE FROM app_user_roles aur
-        USING roles r
-        WHERE aur.user_id = NEW.id
-          AND aur.role_id = r.id
-          AND r.name = OLD.role;
-    END IF;
-
-    INSERT INTO app_user_roles (user_id, role_id)
-    VALUES (NEW.id, v_role_id)
-    ON CONFLICT (user_id, role_id) DO NOTHING;
-
+    NEW.is_active = (NEW.status = 'ACTIVE');
     RETURN NEW;
 END;
 $$ LANGUAGE plpgsql;
@@ -1118,18 +1175,11 @@ BEGIN
         EXECUTE FUNCTION set_updated_at_timestamp();
     END IF;
 
-    IF NOT EXISTS (SELECT 1 FROM pg_trigger WHERE tgname = 'trg_app_users_normalize_role') THEN
-        CREATE TRIGGER trg_app_users_normalize_role
-        BEFORE INSERT OR UPDATE OF role ON app_users
+    IF NOT EXISTS (SELECT 1 FROM pg_trigger WHERE tgname = 'trg_app_users_sync_is_active') THEN
+        CREATE TRIGGER trg_app_users_sync_is_active
+        BEFORE INSERT OR UPDATE OF status ON app_users
         FOR EACH ROW
-        EXECUTE FUNCTION normalize_app_user_role();
-    END IF;
-
-    IF NOT EXISTS (SELECT 1 FROM pg_trigger WHERE tgname = 'trg_app_users_sync_role_membership') THEN
-        CREATE TRIGGER trg_app_users_sync_role_membership
-        AFTER INSERT OR UPDATE OF role ON app_users
-        FOR EACH ROW
-        EXECUTE FUNCTION sync_app_user_role_membership();
+        EXECUTE FUNCTION sync_user_is_active();
     END IF;
 
     IF NOT EXISTS (SELECT 1 FROM pg_trigger WHERE tgname = 'trg_alert_configs_updated_at') THEN
@@ -1398,6 +1448,7 @@ GROUP BY f.id, f.name;
 
 CREATE TABLE IF NOT EXISTS fuel_transactions (
     id INTEGER GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY,
+    facility_id INTEGER REFERENCES facilities(id) ON DELETE SET NULL,
     vehicle_id VARCHAR(50) NOT NULL,
     vehicle_cat VARCHAR(20) NOT NULL,
     fuel_type VARCHAR(5) NOT NULL,
@@ -1405,9 +1456,15 @@ CREATE TABLE IF NOT EXISTS fuel_transactions (
     dist_km DOUBLE PRECISION NOT NULL,
     fuel_liters_real DOUBLE PRECISION,
     km_per_liter DOUBLE PRECISION,
-    precio_litro_clp DOUBLE PRECISION NOT NULL DEFAULT 1050.0,
+    precio_litro_clp NUMERIC(15,4) NOT NULL DEFAULT 1050.0,
     notas VARCHAR(255),
-    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    CONSTRAINT ck_fuel_vehicle_cat CHECK (vehicle_cat IN ('Van', 'Truck', 'Bus', 'Car')),
+    CONSTRAINT ck_fuel_type CHECK (fuel_type IN ('D', 'G')),
+    CONSTRAINT ck_fuel_dist_km CHECK (dist_km > 0),
+    CONSTRAINT ck_fuel_liters_real CHECK (fuel_liters_real IS NULL OR fuel_liters_real > 0),
+    CONSTRAINT ck_fuel_km_per_liter CHECK (km_per_liter IS NULL OR km_per_liter > 0),
+    CONSTRAINT ck_fuel_precio CHECK (precio_litro_clp > 0)
 );
 
 CREATE INDEX IF NOT EXISTS ix_fuel_transactions_vehicle_id ON fuel_transactions(vehicle_id);
@@ -1415,19 +1472,22 @@ CREATE INDEX IF NOT EXISTS ix_fuel_transactions_fecha ON fuel_transactions(fecha
 
 CREATE TABLE IF NOT EXISTS fuel_prediction_logs (
     id INTEGER GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY,
+    facility_id INTEGER REFERENCES facilities(id) ON DELETE SET NULL,
     vehicle_cat VARCHAR(20) NOT NULL,
     fuel_type VARCHAR(5) NOT NULL,
     dist_km DOUBLE PRECISION NOT NULL,
     km_per_liter_usado DOUBLE PRECISION NOT NULL,
     km_per_liter_fue_imputado BOOLEAN NOT NULL,
-    precio_litro_clp DOUBLE PRECISION NOT NULL,
+    precio_litro_clp NUMERIC(15,4) NOT NULL,
     fuel_liters DOUBLE PRECISION NOT NULL,
     co2_kg DOUBLE PRECISION NOT NULL,
-    costo_clp DOUBLE PRECISION NOT NULL,
+    costo_clp NUMERIC(15,4) NOT NULL,
     ahorro_litros DOUBLE PRECISION NOT NULL,
-    ahorro_clp DOUBLE PRECISION NOT NULL,
+    ahorro_clp NUMERIC(15,4) NOT NULL,
     ahorro_co2_kg DOUBLE PRECISION NOT NULL,
-    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    CONSTRAINT ck_fpl_vehicle_cat CHECK (vehicle_cat IN ('Van', 'Truck', 'Bus', 'Car')),
+    CONSTRAINT ck_fpl_fuel_type CHECK (fuel_type IN ('D', 'G'))
 );
 
 COMMIT;

@@ -30,8 +30,8 @@ class Settings(BaseSettings):
     default_alert_water_threshold_pct: float = 18.0
     default_alert_volatility_threshold_pct: float = 15.0
 
-    # Configuración JWT
-    secret_key: str = "your-secret-key-change-in-production"
+    # Configuración JWT — SECRET_KEY debe definirse en .env, sin fallback en producción
+    secret_key: str
     jwt_algorithm: str = "HS256"
     jwt_expiration_hours: int = 24
     jwt_issuer: str = "eco-energy-api"

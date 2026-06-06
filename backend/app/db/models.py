@@ -12,6 +12,7 @@ from sqlalchemy import (
     Float,
     ForeignKey,
     Integer,
+    Numeric,
     String,
     Text,
     UniqueConstraint,
@@ -35,6 +36,7 @@ class User(Base):
     must_change_password: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     last_login_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    token_version: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
@@ -84,8 +86,8 @@ class MonthlyConsumption(Base):
 
     electricity_kwh: Mapped[float] = mapped_column(Float, nullable=False)
     water_m3: Mapped[float] = mapped_column(Float, nullable=False)
-    electricity_cost_usd: Mapped[float] = mapped_column(Float, nullable=False)
-    water_cost_usd: Mapped[float] = mapped_column(Float, nullable=False)
+    electricity_cost_usd: Mapped[float] = mapped_column(Numeric(15, 4, asdecimal=False), nullable=False)
+    water_cost_usd: Mapped[float] = mapped_column(Numeric(15, 4, asdecimal=False), nullable=False)
     co2_avoided_ton: Mapped[float] = mapped_column(Float, nullable=False, default=0)
 
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
@@ -428,7 +430,7 @@ class ResourceMonthlyConsumption(Base):
     year: Mapped[int] = mapped_column(Integer, nullable=False)
     month: Mapped[int] = mapped_column(Integer, nullable=False)
     consumption_value: Mapped[float] = mapped_column(Float, nullable=False)
-    cost_usd: Mapped[float] = mapped_column(Float, nullable=False, default=0)
+    cost_usd: Mapped[float] = mapped_column(Numeric(15, 4, asdecimal=False), nullable=False, default=0)
     emissions_tco2e: Mapped[float] = mapped_column(Float, nullable=False, default=0)
     source: Mapped[str] = mapped_column(String(80), nullable=False, default="simulated")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
@@ -455,10 +457,10 @@ class ResourceMonthlyConsumption(Base):
 
 
 class FuelTransaction(Base):
-    """Registro real de operación de flota - consumo observado en terreno."""
     __tablename__ = "fuel_transactions"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    facility_id: Mapped[Optional[int]] = mapped_column(ForeignKey("facilities.id", ondelete="SET NULL"), nullable=True)
     vehicle_id: Mapped[str] = mapped_column(String(50), nullable=False, index=True)
     vehicle_cat: Mapped[str] = mapped_column(String(20), nullable=False)
     fuel_type: Mapped[str] = mapped_column(String(5), nullable=False)
@@ -466,7 +468,7 @@ class FuelTransaction(Base):
     dist_km: Mapped[float] = mapped_column(Float, nullable=False)
     fuel_liters_real: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
     km_per_liter: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
-    precio_litro_clp: Mapped[float] = mapped_column(Float, nullable=False, default=1415.0)
+    precio_litro_clp: Mapped[float] = mapped_column(Numeric(15, 4, asdecimal=False), nullable=False, default=1415.0)
     notas: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
 
@@ -475,17 +477,18 @@ class FuelPredictionLog(Base):
     __tablename__ = "fuel_prediction_logs"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    facility_id: Mapped[Optional[int]] = mapped_column(ForeignKey("facilities.id", ondelete="SET NULL"), nullable=True)
     vehicle_cat: Mapped[str] = mapped_column(String(20), nullable=False)
     fuel_type: Mapped[str] = mapped_column(String(5), nullable=False)
     dist_km: Mapped[float] = mapped_column(Float, nullable=False)
     km_per_liter_usado: Mapped[float] = mapped_column(Float, nullable=False)
     km_per_liter_fue_imputado: Mapped[bool] = mapped_column(Boolean, nullable=False)
-    precio_litro_clp: Mapped[float] = mapped_column(Float, nullable=False)
+    precio_litro_clp: Mapped[float] = mapped_column(Numeric(15, 4, asdecimal=False), nullable=False)
     fuel_liters: Mapped[float] = mapped_column(Float, nullable=False)
     co2_kg: Mapped[float] = mapped_column(Float, nullable=False)
-    costo_clp: Mapped[float] = mapped_column(Float, nullable=False)
+    costo_clp: Mapped[float] = mapped_column(Numeric(15, 4, asdecimal=False), nullable=False)
     ahorro_litros: Mapped[float] = mapped_column(Float, nullable=False)
-    ahorro_clp: Mapped[float] = mapped_column(Float, nullable=False)
+    ahorro_clp: Mapped[float] = mapped_column(Numeric(15, 4, asdecimal=False), nullable=False)
     ahorro_co2_kg: Mapped[float] = mapped_column(Float, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
 

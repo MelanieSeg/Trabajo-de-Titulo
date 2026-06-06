@@ -3,7 +3,7 @@ from datetime import datetime, timedelta, timezone
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy.orm import Session
 
-from app.api.deps import get_db
+from app.api.deps import get_current_user, get_db
 from app.core.rate_limit import limiter
 from app.core.security import (
     create_access_token,
@@ -101,6 +101,7 @@ def login(
         user_id=user.id,
         email=user.email,
         role=user.role,
+        token_version=user.token_version,
         expires_delta=expires_delta,
     )
 
@@ -415,3 +416,18 @@ def reset_password(
         message="Contraseña restablecida exitosamente. Ahora puedes iniciar sesión.",
         email=user.email,
     )
+
+
+@router.post("/logout", status_code=status.HTTP_204_NO_CONTENT)
+def logout(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """
+    Invalida el token actual incrementando token_version en la DB.
+    Cualquier JWT emitido con la versión anterior queda inválido de inmediato,
+    independiente de su fecha de expiración.
+    """
+    current_user.token_version += 1
+    db.commit()
+    return None

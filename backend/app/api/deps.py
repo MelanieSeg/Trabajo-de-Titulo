@@ -17,7 +17,10 @@ def get_current_user(
     credentials: HTTPAuthorizationCredentials | None = Depends(security),
     db: Session = Depends(get_db),
 ) -> User:
-    """Extrae y valida el usuario desde el JWT de Authorization header."""
+    """Extrae y valida el usuario desde el JWT de Authorization header.
+
+    Verifica token_version para que un logout invalide todos los tokens previos.
+    """
     if credentials is None:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -37,6 +40,14 @@ def get_current_user(
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Usuario no encontrado o inactivo",
+        )
+    # Verificar que el token no haya sido invalidado por logout
+    token_version = payload.get("token_version", 0)
+    if token_version != user.token_version:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Sesión expirada. Por favor, inicia sesión nuevamente.",
+            headers={"WWW-Authenticate": "Bearer"},
         )
     return user
 

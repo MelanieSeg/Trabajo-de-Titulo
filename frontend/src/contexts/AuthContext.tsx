@@ -1,12 +1,12 @@
 import { createContext, useContext, useState, useEffect, ReactNode } from "react";
-import { User, LoginRequest, login as apiLogin, logout as apiLogout, getCurrentUser, isAuthenticated, getToken, getTokenExpiresAt } from "@/lib/api";
+import { User, LoginRequest, login as apiLogin, logout as apiLogout, backendLogout, getCurrentUser, isAuthenticated, getToken, getTokenExpiresAt } from "@/lib/api";
 
 interface AuthContextType {
   user: User | null;
   isAuthenticated: boolean;
   isLoading: boolean;
   login: (credentials: LoginRequest) => Promise<void>;
-  logout: () => void;
+  logout: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -70,7 +70,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   };
 
-  const handleLogout = () => {
+  const handleLogout = async () => {
+    await backendLogout();
     apiLogout();
     setUser(null);
     setAuthenticated(false);
