@@ -47,6 +47,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setAuthenticated(false);
       return;
     }
+    // setTimeout desborda (dispara inmediatamente) para valores > 2^31-1 ms (~24.8 días).
+    // Tokens de larga duración (remember_me=30 días) se validan al siguiente montaje.
+    const MAX_SAFE_TIMEOUT_MS = 2_147_483_647;
+    if (msUntilExpiry > MAX_SAFE_TIMEOUT_MS) return;
     const timer = setTimeout(() => {
       apiLogout();
       setUser(null);
