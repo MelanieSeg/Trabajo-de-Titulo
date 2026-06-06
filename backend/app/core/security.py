@@ -28,6 +28,7 @@ def create_access_token(
     email: str,
     role: str,
     token_version: int = 0,
+    company_id: Optional[int] = None,
     scope: str = "full_access",
     expires_delta: Optional[timedelta] = None,
 ) -> str:
@@ -42,6 +43,7 @@ def create_access_token(
         "sub": str(user_id),
         "email": email,
         "role": role,
+        "company_id": company_id,
         "token_version": token_version,
         "scope": scope,
         "iat": now.timestamp(),

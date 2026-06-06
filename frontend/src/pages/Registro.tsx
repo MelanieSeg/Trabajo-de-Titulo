@@ -3,7 +3,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useState } from "react";
-import { Zap, Droplets, Leaf, Mail, Lock, User, AlertCircle, CheckCircle2, Copy } from "lucide-react";
+import { Zap, Droplets, Leaf, Mail, Lock, User, Building2, AlertCircle, CheckCircle2, Copy } from "lucide-react";
 import { registerSchema, type RegisterInput } from "@/lib/validation";
 import { useNavigate } from "react-router-dom";
 import { useToast } from "@/hooks/use-toast";
@@ -12,6 +12,7 @@ import { register as apiRegister } from "@/lib/api";
 export default function Registro() {
   const navigate = useNavigate();
   const { toast } = useToast();
+  const [companyName, setCompanyName] = useState("");
   const [fullName, setFullName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -42,6 +43,7 @@ export default function Registro() {
 
     try {
       const formData: RegisterInput = {
+        companyName,
         fullName,
         email,
         password,
@@ -62,6 +64,7 @@ export default function Registro() {
 
       // Register via API
       const response = await apiRegister({
+        company_name: result.data.companyName,
         full_name: result.data.fullName,
         email: result.data.email,
         password: result.data.password,
@@ -131,6 +134,32 @@ export default function Registro() {
             </CardHeader>
             <CardContent>
               <form onSubmit={handleSubmit} className="space-y-4">
+                {/* Empresa */}
+                <div className="space-y-2">
+                  <Label htmlFor="companyName" className="text-sm font-medium">
+                    Empresa u organización
+                  </Label>
+                  <div className="relative">
+                    <Building2 className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground pointer-events-none" />
+                    <Input
+                      id="companyName"
+                      type="text"
+                      placeholder="Nombre de tu empresa"
+                      value={companyName}
+                      onChange={(e) => setCompanyName(e.target.value)}
+                      className={`pl-9 transition-colors focus-visible:ring-1 ${
+                        errors.companyName ? "border-red-500" : ""
+                      }`}
+                      disabled={isLoading}
+                    />
+                  </div>
+                  {errors.companyName && (
+                    <p className="text-sm text-red-500 flex items-center gap-1">
+                      <AlertCircle className="w-4 h-4" /> {errors.companyName}
+                    </p>
+                  )}
+                </div>
+
                 {/* Nombre completo */}
                 <div className="space-y-2">
                   <Label htmlFor="fullName" className="text-sm font-medium">

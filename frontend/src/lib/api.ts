@@ -151,6 +151,7 @@ export interface ETLSchedulePayload {
 
 export interface User {
   id: number;
+  company_id: number | null;
   email: string;
   full_name: string | null;
   email_verified: boolean;
@@ -173,6 +174,7 @@ export interface LoginResponse {
 }
 
 export interface RegisterRequest {
+  company_name: string;
   full_name: string;
   email: string;
   password: string;

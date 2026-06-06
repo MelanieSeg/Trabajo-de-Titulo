@@ -13,6 +13,7 @@ class LoginRequest(BaseModel):
 
 class RegisterRequest(BaseModel):
     """Esquema de solicitud de registro con validación de contraseña fuerte"""
+    company_name: str = Field(min_length=2, max_length=150, description="Nombre de la empresa o institución")
     full_name: str = Field(min_length=3, max_length=100)
     email: EmailStr
     password: str = Field(min_length=8, max_length=100)
@@ -74,6 +75,7 @@ class VerifyEmailResponse(BaseModel):
 class UserResponse(BaseModel):
     """Esquema de respuesta de usuario para respuestas de API"""
     id: int
+    company_id: Optional[int]
     email: str
     full_name: Optional[str]
     email_verified: bool

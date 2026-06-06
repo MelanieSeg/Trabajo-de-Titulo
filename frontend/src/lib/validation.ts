@@ -31,6 +31,12 @@ const passwordSchema = z
 
 export const registerSchema = z
   .object({
+    companyName: z
+      .string()
+      .min(1, "El nombre de la empresa es requerido")
+      .min(2, "El nombre debe tener al menos 2 caracteres")
+      .max(150, "El nombre no puede exceder 150 caracteres")
+      .trim(),
     fullName: z
       .string()
       .min(1, "El nombre es requerido")

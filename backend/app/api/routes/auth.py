@@ -3,6 +3,8 @@ from datetime import datetime, timedelta, timezone
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy.orm import Session
 
+from sqlalchemy import select
+
 from app.api.deps import get_current_user, get_db
 from app.core.rate_limit import limiter
 from app.core.security import (
@@ -14,7 +16,7 @@ from app.core.security import (
     verify_password,
     verify_password_reset_token,
 )
-from app.db.models import User
+from app.db.models import Company, User
 from app.schemas.auth import (
     ForgotPasswordRequest,
     ForgotPasswordResponse,
@@ -102,12 +104,14 @@ def login(
         email=user.email,
         role=user.role,
         token_version=user.token_version,
+        company_id=user.company_id,
         expires_delta=expires_delta,
     )
 
     # Preparar respuesta de usuario (excluir datos sensibles)
     user_response = UserResponse(
         id=user.id,
+        company_id=user.company_id,
         email=user.email,
         full_name=user.full_name,
         email_verified=user.email_verified,
@@ -145,8 +149,9 @@ def register(
       * At least one digit
       * At least one special character
     """
-    # Normalizar email
+    # Normalizar email y nombre de empresa
     email = payload.email.lower().strip()
+    company_name = payload.company_name.strip()
 
     # Verificar si el usuario ya existe
     existing_user = db.query(User).filter(User.email == email).first()
@@ -156,12 +161,21 @@ def register(
             detail="Este correo ya está registrado",
         )
 
+    # Obtener o crear la empresa — en SaaS multi-tenant cada registro
+    # puede crear una empresa nueva o unirse a una existente por nombre exacto.
+    company = db.scalar(select(Company).where(Company.name == company_name))
+    if not company:
+        company = Company(name=company_name)
+        db.add(company)
+        db.flush()
+
     # Hashear contraseña
     password_hash = hash_password(payload.password)
 
-    # El registro público siempre crea un ADMIN. Los USERs los crea el ADMIN desde /operations/users.
-    # Los USERs los crea el ADMIN desde /operations/users.
+    # El registro público siempre crea un ADMIN de la empresa.
+    # Los demás usuarios (USER, ANALYST, OPERATOR) los crea el ADMIN desde /operations/users.
     new_user = User(
+        company_id=company.id,
         email=email,
         password_hash=password_hash,
         full_name=payload.full_name,
