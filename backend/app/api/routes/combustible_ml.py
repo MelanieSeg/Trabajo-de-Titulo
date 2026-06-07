@@ -255,44 +255,47 @@ def predict_fuel(
     co2_factor = _CO2_FACTOR[payload.fuel_type]
     fue_imputado = payload.km_per_liter is None
 
-    fuel_liters = _predecir_litros(
-        model, payload.dist_km, payload.km_per_liter,
-        payload.vehicle_cat, payload.fuel_type,
-    )
-
-    # Sanidad: verificar que el rendimiento implícito sea físicamente posible.
-    # Sin km_per_liter, el modelo imputa la mediana del entrenamiento y puede
-    # producir predicciones absurdas para distancias cortas.
-    if fuel_liters > 0:
-        km_pl_implicito = payload.dist_km / fuel_liters
-        km_pl_min = _KM_PER_LITER_MIN.get(payload.vehicle_cat, 2.0)
-        if km_pl_implicito < km_pl_min:
-            raise HTTPException(
-                status_code=422,
-                detail=(
-                    f"La predicción para {payload.dist_km} km sin km_por_litro informado "
-                    f"produjo un rendimiento implícito de {km_pl_implicito:.1f} km/L, "
-                    f"que es físicamente imposible para un {payload.vehicle_cat} "
-                    f"(mínimo esperado: {km_pl_min} km/L). "
-                    "Ingresa el rendimiento real del vehículo (km/litro) para obtener una predicción válida."
-                ),
-            )
-
-    km_pl_efectivo = (
-        round(payload.dist_km / fuel_liters, 2) if fue_imputado and fuel_liters > 0
-        else payload.km_per_liter or 1.0
-    )
+    if fue_imputado:
+        # Sin eficiencia conocida: el RF estima litros a partir de la mediana del entrenamiento.
+        # Solo en este caso el modelo puede extrapolarse fuera de rango para distancias cortas.
+        fuel_liters = _predecir_litros(
+            model, payload.dist_km, None,
+            payload.vehicle_cat, payload.fuel_type,
+        )
+        if fuel_liters > 0:
+            km_pl_implicito = payload.dist_km / fuel_liters
+            km_pl_min = _KM_PER_LITER_MIN.get(payload.vehicle_cat, 2.0)
+            if km_pl_implicito < km_pl_min:
+                raise HTTPException(
+                    status_code=422,
+                    detail=(
+                        f"No se proporcionó km/L y la predicción para {payload.dist_km} km "
+                        f"produjo un rendimiento implícito de {km_pl_implicito:.1f} km/L, "
+                        f"que es físicamente imposible para un {payload.vehicle_cat} "
+                        f"(mínimo esperado: {km_pl_min} km/L). "
+                        "Ingresa el rendimiento real del vehículo (km/litro) para obtener una predicción válida."
+                    ),
+                )
+        km_pl_efectivo = round(payload.dist_km / fuel_liters, 2) if fuel_liters > 0 else 1.0
+    else:
+        # Con eficiencia conocida: usar física directa.
+        # El RF no extrapola bien fuera del rango de entrenamiento (~200-1500 km),
+        # pero dist_km / km_per_liter es exacto independientemente de la distancia.
+        fuel_liters = payload.dist_km / payload.km_per_liter
+        km_pl_efectivo = float(payload.km_per_liter)
 
     co2_kg = round(fuel_liters * co2_factor, 2)
     costo_clp = round(fuel_liters * payload.precio_litro_clp, 0)
     costo_por_km = round(costo_clp / payload.dist_km, 1) if payload.dist_km > 0 else 0.0
 
     km_pl_opt = round(km_pl_efectivo * (1 + _MEJORA_EFICIENCIA_PCT / 100), 2)
-    fuel_liters_opt = _predecir_litros(
-        model, payload.dist_km, km_pl_opt,
-        payload.vehicle_cat, payload.fuel_type,
-    )
-    fuel_liters_opt = round(fuel_liters_opt, 2)
+    if fue_imputado:
+        fuel_liters_opt = round(_predecir_litros(
+            model, payload.dist_km, km_pl_opt,
+            payload.vehicle_cat, payload.fuel_type,
+        ), 2)
+    else:
+        fuel_liters_opt = round(payload.dist_km / km_pl_opt, 2)
     co2_kg_opt = round(fuel_liters_opt * co2_factor, 2)
     costo_opt = round(fuel_liters_opt * payload.precio_litro_clp, 0)
 
@@ -801,12 +804,19 @@ def reentrenar_modelo(
     n_excluidos = 0
     for t in transacciones:
         real = float(t.fuel_liters_real)  # type: ignore[arg-type]
-        pred_actual = _predecir_litros(
-            modelo_actual, t.dist_km, t.km_per_liter, t.vehicle_cat, t.fuel_type
-        )
+        # Usar física directa como baseline cuando km_per_liter está disponible.
+        # El RF extrapola fuera de rango para distancias cortas, lo que haría que
+        # registros válidos parezcan anómalos (desvío negativo enorme) y fueran excluidos.
+        if t.km_per_liter:
+            pred_actual = float(t.dist_km) / float(t.km_per_liter)
+        else:
+            pred_actual = _predecir_litros(
+                modelo_actual, t.dist_km, t.km_per_liter, t.vehicle_cat, t.fuel_type
+            )
         desvio = ((real - pred_actual) / pred_actual * 100) if pred_actual > 0 else 0.0
-        if abs(desvio) > _UMBRAL_FILTRO_REENTRENAMIENTO:
-            # Registro anómalo: no enseñar al nuevo modelo que esto es "normal"
+        # Solo excluir consumo excesivo positivo (vehículo gastó mucho más de lo esperado).
+        # Consumo menor al esperado (desvío negativo) es operación eficiente, no anómala.
+        if desvio > _UMBRAL_FILTRO_REENTRENAMIENTO:
             n_excluidos += 1
             continue
         kpl        = float(t.km_per_liter) if t.km_per_liter else np.nan
