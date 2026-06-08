@@ -10,13 +10,13 @@ El proyecto EcoEnergy utiliza **slowapi** para implementar límite de velocidad 
 
 ```python
 from slowapi import Limiter
-from slowapi.util import get_remote_address
+from app.core.rate_limit import get_client_ip
 
-# Inicializar limitador de velocidad con función de clave basada en IP
-limiter = Limiter(key_func=get_remote_address)
+limiter = Limiter(key_func=get_client_ip)
 ```
 
-- **Función de clave**: `get_remote_address` - utiliza la dirección IP del cliente para rastrear límites
+- **Función de clave**: `get_client_ip` - utiliza la IP real del cliente cuando la solicitud llega desde un proxy confiable
+- Headers soportados detrás de proxy: `CF-Connecting-IP`, `X-Forwarded-For` y `X-Real-IP`
 - Este módulo define el objeto `limiter` central que se utiliza en toda la aplicación
 
 ### 2. **Registro en la Aplicación** (`backend/app/main.py`)
@@ -52,12 +52,12 @@ def forgot_password(request: Request, payload: ForgotPasswordRequest, db: Sessio
     """Request password reset with rate limiting (3 attempts per hour per IP)."""
 ```
 
-#### `/login` - 5 intentos por 15 minutos
+#### `/login` - configurable por entorno
 ```python
 @router.post("/login", response_model=LoginResponse)
-@limiter.limit("5/15minutes")
+@limiter.limit(settings.login_rate_limit)
 def login(request: Request, credentials: LoginRequest, db: Session = Depends(get_db)):
-    """Login endpoint with rate limiting (5 attempts per 15 minutes per IP)."""
+    """Login endpoint with configurable rate limiting per client IP."""
 ```
 
 #### `/reset-password` - 5 intentos por hora
@@ -87,26 +87,29 @@ Ejemplos válidos:
 
 ## Cómo Funcionan los Límites
 
-1. **Identificación por IP**: Los límites se rastrean por dirección IP del cliente
+1. **Identificación por IP**: Los límites se rastrean por dirección IP real del cliente
 2. **Contador de solicitudes**: Cada solicitud al endpoint decorado con `@limiter.limit()` incrementa el contador
 3. **Ventana de tiempo deslizante**: Los contadores se reinician después del período especificado
 4. **Respuesta 429**: Cuando se excede el límite, se devuelve un error HTTP 429 (Too Many Requests)
 
-## Modificar Límites
+En Docker o detrás de nginx/Cloudflare, el backend confía por defecto en proxies locales y redes privadas:
 
-Para cambiar los límites de velocidad en un endpoint:
-
-1. Localiza el endpoint en `backend/app/api/routes/auth.py`
-2. Modifica el valor del decorador `@limiter.limit()`
-3. Por ejemplo, para cambiar `/forgot-password` de 3/hora a 5/hora:
-
-```python
-@router.post("/forgot-password", response_model=ForgotPasswordResponse)
-@limiter.limit("5/hour")  # Cambio de 3/hour a 5/hour
-def forgot_password(...):
+```env
+RATE_LIMIT_TRUSTED_PROXIES=127.0.0.1/32,::1/128,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16
 ```
 
-4. Reinicia la aplicación para que los cambios tengan efecto
+## Modificar Límites
+
+Para cambiar los límites de velocidad, ajusta las variables de entorno:
+
+```env
+LOGIN_RATE_LIMIT=20/15minutes
+REGISTER_RATE_LIMIT=3/hour
+FORGOT_PASSWORD_RATE_LIMIT=3/hour
+RESET_PASSWORD_RATE_LIMIT=5/hour
+```
+
+Reinicia la aplicación para que los cambios tengan efecto.
 
 ## Extender Rate Limiting a Otros Endpoints
 
@@ -127,8 +130,8 @@ def mi_endpoint(request: Request, payload: MiPayload, db: Session = Depends(get_
 ## Consideraciones de Seguridad
 
 - Los límites más restrictivos (3/hora) se aplican a operaciones sensibles (registro, recuperación de contraseña)
-- Los límites más permisivos (5/15 minutos) se aplican a operaciones comunes (login)
-- Los límites se aplican por IP, lo que previene ataques de fuerza bruta pero puede afectar a usuarios tras un proxy compartido
+- Los límites más permisivos se aplican a operaciones comunes como login
+- Los límites se aplican por IP real cuando el proxy reenvía headers confiables
 
 ## Pruebas
 

@@ -23,6 +23,14 @@ class Settings(BaseSettings):
     etl_max_upload_mb: int = 100
     platform_config_path: str = "../app/platform-config.json"
 
+    rate_limit_trusted_proxies: str = (
+        "127.0.0.1/32,::1/128,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16"
+    )
+    login_rate_limit: str = "20/15minutes"
+    register_rate_limit: str = "3/hour"
+    forgot_password_rate_limit: str = "3/hour"
+    reset_password_rate_limit: str = "5/hour"
+
     default_company_name: str = "Green Glow Industries"
     default_alert_electricity_threshold_pct: float = 20.0
     default_alert_water_threshold_pct: float = 18.0

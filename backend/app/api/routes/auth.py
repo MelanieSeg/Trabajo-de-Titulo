@@ -6,7 +6,8 @@ from sqlalchemy.orm import Session
 from sqlalchemy import select
 
 from app.api.deps import get_current_user, get_db
-from app.core.rate_limit import limiter
+from app.core.config import get_settings
+from app.core.rate_limit import get_client_ip, limiter
 from app.core.security import (
     create_access_token,
     create_email_verification_token,
@@ -33,17 +34,18 @@ from app.services.email import send_password_reset_email
 from app.utils.audit import AuditLogger
 
 router = APIRouter(prefix="/auth", tags=["auth"])
+settings = get_settings()
 
 
 @router.post("/login", response_model=LoginResponse)
-@limiter.limit("5/15minutes")
+@limiter.limit(settings.login_rate_limit)
 def login(
     request: Request,
     credentials: LoginRequest,
     db: Session = Depends(get_db),
 ):
     """
-    Login endpoint with rate limiting (5 attempts per 15 minutes per IP).
+    Login endpoint with configurable rate limiting per client IP.
 
     Accepts email and password, returns JWT token if valid.
 
@@ -129,7 +131,7 @@ def login(
 
 
 @router.post("/register", response_model=RegisterResponse, status_code=status.HTTP_201_CREATED)
-@limiter.limit("3/hour")
+@limiter.limit(settings.register_rate_limit)
 def register(
     request: Request,
     payload: RegisterRequest,
@@ -263,7 +265,7 @@ def verify_email(token: str, db: Session = Depends(get_db)):
 
 
 @router.post("/forgot-password", response_model=ForgotPasswordResponse)
-@limiter.limit("3/hour")
+@limiter.limit(settings.forgot_password_rate_limit)
 def forgot_password(
     request: Request,
     payload: ForgotPasswordRequest,
@@ -313,7 +315,7 @@ def forgot_password(
 
 
 @router.post("/reset-password", response_model=ResetPasswordResponse)
-@limiter.limit("5/hour")
+@limiter.limit(settings.reset_password_rate_limit)
 def reset_password(
     request: Request,
     payload: ResetPasswordRequest,
@@ -340,7 +342,7 @@ def reset_password(
     - ✅ Audit logging for all attempts
     """
     # Obtener IP del cliente para registrar y aplicar límite de velocidad
-    client_ip = request.client.host if request.client else None
+    client_ip = get_client_ip(request)
 
     # Verificar token
     token_data = verify_password_reset_token(payload.token)

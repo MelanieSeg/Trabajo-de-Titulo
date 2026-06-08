@@ -18,6 +18,11 @@ Archivo raíz `.env` (basado en `.env.example`):
 - `ETL_UPLOAD_DIR`
 - `SAMPLE_CSV_PATH`
 - `PLATFORM_CONFIG_PATH`
+- `RATE_LIMIT_TRUSTED_PROXIES`
+- `LOGIN_RATE_LIMIT`
+- `REGISTER_RATE_LIMIT`
+- `FORGOT_PASSWORD_RATE_LIMIT`
+- `RESET_PASSWORD_RATE_LIMIT`
 
 Archivo `db/credentials.env`:
 - `POSTGRES_DB`
