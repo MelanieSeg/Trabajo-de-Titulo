@@ -10,10 +10,8 @@ class Settings(BaseSettings):
 
     database_url: str = "postgresql+psycopg2://eco_user:eco_pass@db:5432/eco_energy"
     cors_origins: str = (
-        "http://localhost:8080,http://127.0.0.1:8080,"
-        "http://localhost:8081,http://127.0.0.1:8081,"
-        "https://localhost:8080,https://127.0.0.1:8080,"
-        "https://localhost:8081,https://127.0.0.1:8081"
+        "http://localhost:8086,http://127.0.0.1:8086,"
+        "https://localhost:8086,https://127.0.0.1:8086"
     )
     cors_origin_regex: str | None = r"^https?://(localhost|127\.0\.0\.1)(:\d+)?$"
     cors_methods: str = "GET,POST,PUT,PATCH,DELETE,OPTIONS"
@@ -47,7 +45,7 @@ class Settings(BaseSettings):
     reset_password_token_expire_hours: int = 1
 
     # URL del frontend para enlaces de email
-    frontend_url: str = "http://localhost:8081"
+    frontend_url: str = "http://localhost:8086"
 
     model_config = SettingsConfigDict(
         env_file=".env",

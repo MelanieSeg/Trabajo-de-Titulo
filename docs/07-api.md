@@ -40,4 +40,4 @@
 - `GET /api/system/platform-config`
 - `POST /api/system/apply-config`
 
-Para payloads exactos, revisar OpenAPI en `http://localhost:8000/docs`.
+Para payloads exactos, revisar OpenAPI en `http://localhost:8005/docs`.

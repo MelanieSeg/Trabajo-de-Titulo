@@ -124,8 +124,8 @@ npm run dev:https
 
 URL frontend HTTPS local:
 
-- `https://localhost:8081`
-- `https://127.0.0.1:8081`
+- `https://localhost:8086`
+- `https://127.0.0.1:8086`
 
 ### 8.3 Levantar entorno completo en Docker
 
@@ -135,9 +135,9 @@ docker compose up --build
 
 ### 8.4 URLs por defecto
 
-- Frontend: `http://localhost:8080`
-- Backend docs: `http://localhost:8000/docs`
-- Health: `http://localhost:8000/api/health`
+- Frontend: `http://localhost:8086`
+- Backend docs: `http://localhost:8005/docs`
+- Health: `http://localhost:8005/api/health`
 
 ## 9. Scripts útiles
 

@@ -11,19 +11,19 @@
 ### Reaplicar configuración transversal
 
 ```bash
-curl -X POST http://localhost:8000/api/system/apply-config
+curl -X POST http://localhost:8005/api/system/apply-config
 ```
 
 ### Ver configuración activa de plataforma
 
 ```bash
-curl http://localhost:8000/api/system/platform-config
+curl http://localhost:8005/api/system/platform-config
 ```
 
 ### Validar salud de API
 
 ```bash
-curl http://localhost:8000/api/health
+curl http://localhost:8005/api/health
 ```
 
 ### Ver logs de backend

@@ -9,7 +9,7 @@ services:
       - postgres_data:/var/lib/postgresql/data
       - ./db/init.sql:/docker-entrypoint-initdb.d/00_init.sql:ro
     ports:
-      - "${POSTGRES_PORT:-5432}:5432"
+      - "${POSTGRES_PORT:-5437}:5432"
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
       interval: 10s
@@ -51,7 +51,7 @@ services:
       JWT_ISSUER: ${JWT_ISSUER:-eco-energy-api}
       JWT_AUDIENCE: ${JWT_AUDIENCE:-eco-energy-app}
       RESET_PASSWORD_TOKEN_EXPIRE_HOURS: ${RESET_PASSWORD_TOKEN_EXPIRE_HOURS:-1}
-      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:8081,http://127.0.0.1:8081,https://localhost:8081,https://127.0.0.1:8081}
+      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:8086,http://127.0.0.1:8086,https://localhost:8086,https://127.0.0.1:8086}
       ETL_UPLOAD_DIR: ${ETL_UPLOAD_DIR:-/app/data/uploads}
       SAMPLE_CSV_PATH: ${SAMPLE_CSV_PATH:-/app/data/raw/sample_consumption.csv}
       ETL_MAX_UPLOAD_MB: ${ETL_MAX_UPLOAD_MB:-100}
@@ -65,7 +65,7 @@ services:
       - backend_uploads:/app/data/uploads
       - ./app:/opt/ecoenergy/app:ro
     ports:
-      - "${BACKEND_PORT:-8000}:8000"
+      - "${BACKEND_PORT:-8005}:8000"
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/health')"]
       interval: 15s
@@ -83,7 +83,7 @@ services:
       backend:
         condition: service_healthy
     ports:
-      - "${FRONTEND_PORT:-8081}:8080"
+      - "${FRONTEND_PORT:-8086}:8080"
 
 volumes:
   postgres_data:
