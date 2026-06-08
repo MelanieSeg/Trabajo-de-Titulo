@@ -323,9 +323,6 @@ export default function PrediccionesCombustible() {
                   value={form.precio_litro_clp}
                   onChange={(e) => setForm((f) => ({ ...f, precio_litro_clp: e.target.value }))}
                 />
-                <p className="text-xs text-muted-foreground">
-                  Referencia: Diésel ≈ $1.050/L · Gas Oil ≈ $950/L (Chile, 2026)
-                </p>
               </div>
 
               <div className="flex gap-2 pt-1">
