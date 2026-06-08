@@ -85,7 +85,7 @@ const RESOURCE_UI: Record<
   },
   diesel: {
     title: "Consumo de Combustibles",
-    subtitle: "Datos de flota: Diésel y Gas Oil",
+    subtitle: "Incluye diésel y gas oil para transporte y procesos",
     icon: Factory,
     colorClass: "text-amber-600",
   },
