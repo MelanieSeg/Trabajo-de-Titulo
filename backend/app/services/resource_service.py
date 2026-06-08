@@ -21,8 +21,10 @@ from app.utils.date_utils import month_label, next_month
 
 # Tasa de conversión CLP → USD (aproximación operacional)
 _CLP_PER_USD: float = 950.0
-# Factores de emisiones por tipo de combustible (kg CO₂ / litro)
-_CO2_DIESEL_KG_PER_LITER: float = 2.68
+# Factores de emisión (kg CO₂e / litro)
+# Diésel: 2,74 según Guía HuellaChile (MMA, 2023) — fuente oficial para reportes RETC/CCGE en Chile.
+# Gas Oil: 1,89 según IPCC 2006 GL Tier 1 (HuellaChile no distingue gas oil por separado).
+_CO2_DIESEL_KG_PER_LITER: float = 2.74
 _CO2_GASOIL_KG_PER_LITER: float = 1.89
 _CO2_FACTOR: dict[str, float] = {"D": _CO2_DIESEL_KG_PER_LITER, "G": _CO2_GASOIL_KG_PER_LITER}
 
@@ -546,6 +548,12 @@ def _sync_fleet_areas(
         )
 
 
+# Recursos de combustión directa que conforman el Scope 1 según GHG Protocol / ISO 14064
+_SCOPE1_CODES: frozenset[str] = frozenset(
+    {"diesel", "gasolina", "gas_natural", "glp_propano", "vapor_termica"}
+)
+
+
 def sync_diesel_from_transactions(db: Session) -> int:
     """Sincroniza ResourceMonthlyConsumption[diesel] con datos reales de fuel_transactions.
 
@@ -619,12 +627,118 @@ def sync_diesel_from_transactions(db: Session) -> int:
     return count
 
 
+def sync_co2e_scope1(db: Session) -> tuple[int, dict[str, float]]:
+    """Consolida emisiones Scope 1 reales en ResourceMonthlyConsumption[emisiones_co2e].
+
+    Suma emissions_tco2e de los recursos de combustión directa (diesel, gasolina,
+    gas_natural, glp_propano, vapor_termica) y los escribe como registros de
+    emisiones_co2e con source='aggregated_scope1', reemplazando cualquier dato
+    sintético previo.
+
+    Retorna (meses_sincronizados, desglose_tco2e_por_fuente).
+    El desglose es un dict {código_recurso: total_tco2e} útil para mostrar
+    la contribución de cada fuente al Scope 1 total.
+    """
+    # Asegura que diesel tenga los datos más recientes de fuel_transactions
+    sync_diesel_from_transactions(db)
+
+    co2e_resource = db.scalar(
+        select(ResourceType).where(
+            ResourceType.code == "emisiones_co2e", ResourceType.is_active.is_(True)
+        )
+    )
+    if not co2e_resource:
+        return 0, {}
+
+    facility_id = db.scalar(select(Facility.id).order_by(Facility.id.asc()).limit(1))
+    if not facility_id:
+        return 0, {}
+
+    scope1_resources = db.scalars(
+        select(ResourceType).where(
+            ResourceType.code.in_(_SCOPE1_CODES), ResourceType.is_active.is_(True)
+        )
+    ).all()
+    if not scope1_resources:
+        return 0, {}
+
+    scope1_ids = [r.id for r in scope1_resources]
+    scope1_code_by_id = {r.id: r.code for r in scope1_resources}
+
+    # Desglose total por fuente para retornar al caller
+    breakdown_rows = db.execute(
+        select(
+            ResourceMonthlyConsumption.resource_type_id,
+            func.sum(ResourceMonthlyConsumption.emissions_tco2e).label("total_tco2e"),
+        )
+        .where(ResourceMonthlyConsumption.resource_type_id.in_(scope1_ids))
+        .group_by(ResourceMonthlyConsumption.resource_type_id)
+    ).all()
+    breakdown: dict[str, float] = {
+        scope1_code_by_id[row.resource_type_id]: round(float(row.total_tco2e or 0), 4)
+        for row in breakdown_rows
+        if row.resource_type_id in scope1_code_by_id
+    }
+
+    # Suma mensual de todas las fuentes Scope 1
+    month_rows = db.execute(
+        select(
+            ResourceMonthlyConsumption.year,
+            ResourceMonthlyConsumption.month,
+            func.sum(ResourceMonthlyConsumption.emissions_tco2e).label("total_tco2e"),
+            func.sum(ResourceMonthlyConsumption.cost_usd).label("total_cost"),
+        )
+        .where(ResourceMonthlyConsumption.resource_type_id.in_(scope1_ids))
+        .group_by(ResourceMonthlyConsumption.year, ResourceMonthlyConsumption.month)
+        .order_by(ResourceMonthlyConsumption.year, ResourceMonthlyConsumption.month)
+    ).all()
+
+    if not month_rows:
+        return 0, breakdown
+
+    # Reemplaza todos los registros previos (sintéticos o agregados)
+    db.query(ResourceMonthlyConsumption).filter(
+        ResourceMonthlyConsumption.resource_type_id == co2e_resource.id,
+    ).delete()
+    db.flush()
+
+    count = 0
+    for row in month_rows:
+        year = int(row.year)
+        month = int(row.month)
+        tco2e = round(float(row.total_tco2e or 0), 6)
+        cost = round(float(row.total_cost or 0), 4)
+        record = ResourceMonthlyConsumption(
+            resource_type_id=co2e_resource.id,
+            facility_id=facility_id,
+            year=year,
+            month=month,
+            consumption_value=tco2e,
+            cost_usd=cost,
+            emissions_tco2e=tco2e,
+            source="aggregated_scope1",
+        )
+        db.add(record)
+        count += 1
+
+    db.flush()
+    return count, breakdown
+
+
 def get_resource_overview(db: Session, code: str, months: int = 12) -> dict[str, Any]:
-    # Para diésel, sincroniza desde transacciones reales antes de construir la respuesta
+    scope1_breakdown: dict[str, float] = {}
+    data_source = "synthetic_seed"
+
     if code == "diesel":
         synced = sync_diesel_from_transactions(db)
         if synced > 0:
             db.flush()
+        data_source = "fuel_transactions"
+    elif code == "emisiones_co2e":
+        synced, scope1_breakdown = sync_co2e_scope1(db)
+        if synced > 0:
+            db.flush()
+        data_source = "aggregated_scope1" if scope1_breakdown else "synthetic_seed"
 
     resource = _resource_row(db, code)
     series = _monthly_aggregates(db, resource.id)
@@ -750,6 +864,8 @@ def get_resource_overview(db: Session, code: str, months: int = 12) -> dict[str,
         "monthly": series,
         "areas": areas,
         "predictions": predictions,
+        "data_source": data_source,
+        "scope1_breakdown": scope1_breakdown,
         "alerts": [
             {
                 "id": row.id,

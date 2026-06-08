@@ -56,6 +56,14 @@ import { RecursoSkeleton } from "@/components/skeletons/PageSkeleton";
 import { downloadResourceReport, type FuelBreakdownPoint, UtilityReportPeriodType } from "@/lib/api";
 import { toast } from "sonner";
 
+const SCOPE1_LABELS: Record<string, string> = {
+  diesel:       "Diésel / Gas Oil (flota)",
+  gasolina:     "Gasolina",
+  gas_natural:  "Gas Natural",
+  glp_propano:  "GLP / Propano",
+  vapor_termica:"Vapor / Energía Térmica",
+};
+
 // estilos de gráficos
 const axisStroke = "hsl(var(--muted-foreground))";
 const gridStroke  = "hsl(var(--border))";
@@ -353,6 +361,20 @@ export default function RecursoEnergetico() {
           <Card className="p-4 text-sm text-destructive">
             No se pudo cargar la vista del recurso.
           </Card>
+        )}
+
+        {/* badge fuente de datos (emisiones_co2e) */}
+        {code === "emisiones_co2e" && (
+          <div className="flex items-center gap-2 text-xs">
+            <span className="text-muted-foreground">Fuente:</span>
+            {data?.data_source === "aggregated_scope1" ? (
+              <Badge variant="default" className="bg-emerald-600 text-white hover:bg-emerald-700">
+                Datos reales · Scope 1 agregado
+              </Badge>
+            ) : (
+              <Badge variant="secondary">Estimación sintética</Badge>
+            )}
+          </div>
         )}
 
         {/* KPI cards */}
@@ -731,6 +753,51 @@ export default function RecursoEnergetico() {
             </div>
           </CardContent>
         </Card>
+
+        {/* desglose Scope 1 por fuente (solo emisiones_co2e con datos reales) */}
+        {code === "emisiones_co2e" && data?.data_source === "aggregated_scope1" && data.scope1_breakdown && Object.keys(data.scope1_breakdown).length > 0 && (
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base">Desglose Scope 1 por Fuente</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <p className="text-xs text-muted-foreground mb-3">
+                Emisiones directas (GHG Protocol Scope 1) consolidadas desde los recursos de combustión de la instalación.
+                Factor de emisión por tipo: diésel 2,74 kg CO₂e/L (HuellaChile MMA 2023) · gas oil 1,89 kg CO₂e/L (IPCC 2006) · gas natural 1,9 kg CO₂e/m³.
+              </p>
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b">
+                      <th className="text-left py-1 font-medium text-muted-foreground">Fuente</th>
+                      <th className="text-right py-1 font-medium text-muted-foreground">tCO₂e acumuladas</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {Object.entries(data.scope1_breakdown)
+                      .sort(([, a], [, b]) => b - a)
+                      .map(([sourceCode, tco2e]) => (
+                        <tr key={sourceCode} className="border-b last:border-0">
+                          <td className="py-1.5">{SCOPE1_LABELS[sourceCode] ?? sourceCode}</td>
+                          <td className="py-1.5 text-right font-mono">
+                            {tco2e.toLocaleString("es-CL", { maximumFractionDigits: 3 })}
+                          </td>
+                        </tr>
+                      ))}
+                    <tr className="font-semibold">
+                      <td className="py-1.5 pt-2">Total Scope 1</td>
+                      <td className="py-1.5 pt-2 text-right font-mono text-emerald-700 dark:text-emerald-400">
+                        {Object.values(data.scope1_breakdown)
+                          .reduce((s, v) => s + v, 0)
+                          .toLocaleString("es-CL", { maximumFractionDigits: 3 })} tCO₂e
+                      </td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            </CardContent>
+          </Card>
+        )}
 
         {/* alertas activas */}
         <Card>

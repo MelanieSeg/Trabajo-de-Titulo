@@ -33,7 +33,8 @@ _MODEL_PATH     = _DATA_DIR / "modelo_combustible.joblib"
 _MODEL_META_PATH= _DATA_DIR / "modelo_combustible_meta.json"
 _BASE_CSV_PATH  = _DATA_DIR / "fleet_fuel_base.csv"
 
-_CO2_FACTOR: dict[str, float] = {"D": 2.68, "G": 1.89}
+# Factor diésel: 2,74 kg CO₂e/L según Guía HuellaChile (MMA, 2023). Gas oil: 1,89 kg CO₂e/L (IPCC 2006 Tier 1).
+_CO2_FACTOR: dict[str, float] = {"D": 2.74, "G": 1.89}
 _MEJORA_EFICIENCIA_PCT = 10.0
 _UMBRAL_ANOMALIA_PCT   = 10.0
 _MIN_REGISTROS_REENTRENAMIENTO = 30
@@ -476,8 +477,8 @@ def analisis_flota(db: Session = Depends(get_db)) -> AnalisisFlotaResponse:
             real_litros=round(real_total, 2),
             predicho_litros=round(pred_total, 2),
             desvio_pct=round(desvio, 1),
-            co2_real_kg=round(p["diesel_real"] * 2.68 + p["gasoil_real"] * 1.89, 2),
-            co2_predicho_kg=round(p["diesel_pred"] * 2.68 + p["gasoil_pred"] * 1.89, 2),
+            co2_real_kg=round(p["diesel_real"] * 2.74 + p["gasoil_real"] * 1.89, 2),
+            co2_predicho_kg=round(p["diesel_pred"] * 2.74 + p["gasoil_pred"] * 1.89, 2),
             diesel_real_l=round(p["diesel_real"], 2) if p["diesel_real"] > 0 else None,
             gasoil_real_l=round(p["gasoil_real"], 2) if p["gasoil_real"] > 0 else None,
             diesel_pred_l=round(p["diesel_pred"], 2) if p["diesel_pred"] > 0 else None,
@@ -594,7 +595,7 @@ def exportar_retc(
     transacciones = query.order_by(FuelTransaction.fecha).all()
 
     NOMBRES_MES = ["Ene","Feb","Mar","Abr","May","Jun","Jul","Ago","Sep","Oct","Nov","Dic"]
-    FACTOR_CO2 = {"D": 2.68, "G": 1.89}
+    FACTOR_CO2 = {"D": 2.74, "G": 1.89}
     TIPO_LABEL = {"D": "Diesel", "G": "Gas Oil"}
 
     header = [

@@ -33,8 +33,9 @@ const FUEL_LABELS: Record<FuelPredictionRequest["fuel_type"], string> = {
   G: "Gas Oil",
 };
 
+// Factor diésel: 2,74 kg CO₂e/L (Guía HuellaChile, MMA 2023). Gas oil: 1,89 (IPCC 2006 Tier 1).
 const CO2_FACTOR: Record<FuelPredictionRequest["fuel_type"], number> = {
-  D: 2.68,
+  D: 2.74,
   G: 1.89,
 };
 

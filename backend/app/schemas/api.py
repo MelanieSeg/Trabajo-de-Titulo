@@ -404,6 +404,10 @@ class ResourceOverviewResponse(BaseModel):
     areas: list[ResourceAreaPoint]
     predictions: list[ResourcePredictionPoint]
     alerts: list[ResourceAlertItem]
+    # "fuel_transactions" | "aggregated_scope1" | "synthetic_seed"
+    data_source: str = "synthetic_seed"
+    # Desglose tCO2e por fuente Scope 1 (solo para code="emisiones_co2e")
+    scope1_breakdown: dict[str, float] = {}
 
 
 class APIError(BaseModel):
