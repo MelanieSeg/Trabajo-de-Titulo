@@ -29,11 +29,11 @@ export default defineConfig(({ mode }) => {
   return {
     server: {
       host: "::",
-      port: 8081,
+      port: 8086,
       https: httpsConfig,
       proxy: {
         "/api": {
-          target: process.env.VITE_DEV_API_PROXY_TARGET ?? "http://localhost:8000",
+          target: process.env.VITE_DEV_API_PROXY_TARGET ?? "http://localhost:8005",
           changeOrigin: true,
           secure: false,
         },
