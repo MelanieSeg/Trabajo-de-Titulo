@@ -797,6 +797,10 @@ export interface ResourceOverview {
   areas: ResourceAreaPoint[];
   predictions: ResourcePredictionPoint[];
   alerts: ResourceOverviewAlert[];
+  /** "fuel_transactions" | "aggregated_scope1" | "synthetic_seed" */
+  data_source?: string;
+  /** Desglose tCO2e por fuente Scope 1 (solo para code="emisiones_co2e") */
+  scope1_breakdown?: Record<string, number>;
 }
 
 export function fetchResourceCatalog(): Promise<ResourceCatalogItem[]> {
