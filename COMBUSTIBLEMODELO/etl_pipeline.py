@@ -11,7 +11,7 @@ import numpy as np
 # Factores de unidad y emisiones usados en todo el pipeline.
 LITERS_PER_UK_GALLON    = 4.54609
 KM_PER_MILE             = 1.60934
-CO2_DIESEL_KG_PER_LITER = 2.68
+CO2_DIESEL_KG_PER_LITER = 2.74  # Factor oficial HuellaChile (MMA Chile) para diésel
 CO2_GASOIL_KG_PER_LITER = 1.89
 
 
