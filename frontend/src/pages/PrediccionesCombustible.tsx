@@ -33,8 +33,9 @@ const FUEL_LABELS: Record<FuelPredictionRequest["fuel_type"], string> = {
   G: "Gas Oil",
 };
 
+// Factor diésel: 2,74 kg CO₂e/L (Guía HuellaChile, MMA 2023). Gas oil: 1,89 (IPCC 2006 Tier 1).
 const CO2_FACTOR: Record<FuelPredictionRequest["fuel_type"], number> = {
-  D: 2.68,
+  D: 2.74,
   G: 1.89,
 };
 
@@ -322,9 +323,6 @@ export default function PrediccionesCombustible() {
                   value={form.precio_litro_clp}
                   onChange={(e) => setForm((f) => ({ ...f, precio_litro_clp: e.target.value }))}
                 />
-                <p className="text-xs text-muted-foreground">
-                  Referencia: Diésel ≈ $1.050/L · Gas Oil ≈ $950/L (Chile, 2026)
-                </p>
               </div>
 
               <div className="flex gap-2 pt-1">
