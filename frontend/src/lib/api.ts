@@ -1,0 +1,1386 @@
+export interface SummaryMetric {
+  title: string;
+  value: number;
+  unit: string;
+  change_pct: number;
+}
+
+export interface DashboardSummary {
+  latest_month_label: string;
+  metrics: SummaryMetric[];
+  open_alerts: number;
+}
+
+export interface TimeseriesPoint {
+  year: number;
+  month: number;
+  label: string;
+  electricity_kwh: number | null;
+  water_m3: number | null;
+  predicted_electricity_kwh: number | null;
+  predicted_water_m3: number | null;
+  energy_values?: Record<string, number | null>;
+  energy_predictions?: Record<string, number | null>;
+}
+
+export interface DistributionItem {
+  name: string;
+  value: number;
+}
+
+export type AlertSeverity = "critical" | "warning" | "info";
+
+export interface AlertItem {
+  id: number;
+  severity: AlertSeverity;
+  title: string;
+  description: string;
+  utility: string | null;
+  year: number | null;
+  month: number | null;
+  created_at: string;
+}
+
+export interface ActivityItem {
+  id: number;
+  activity_type: string;
+  message: string;
+  created_at: string;
+  metadata: Record<string, unknown>;
+}
+
+export interface EfficiencyItem {
+  label: string;
+  value: number;
+  target: number;
+}
+
+export interface EfficiencyData {
+  score: number;
+  items: EfficiencyItem[];
+}
+
+export interface DashboardData {
+  summary: DashboardSummary;
+  timeseries: TimeseriesPoint[];
+  distribution: DistributionItem[];
+  alerts: AlertItem[];
+  activity: ActivityItem[];
+  efficiency: EfficiencyData;
+}
+
+export interface ETLUploadResult {
+  filename: string;
+  rows_processed: number;
+  rows_rejected: number;
+  status: string;
+  notes: string;
+}
+
+export interface ReportResult {
+  month_label: string;
+  total_electricity_kwh: number;
+  total_water_m3: number;
+  total_cost_usd: number;
+  highlights: string[];
+}
+
+export interface MLTrainResult {
+  model: string;
+  trained_records: number;
+  validation_mae: {
+    electricity: number;
+    water: number;
+  };
+  accuracy_pct: {
+    electricity: number;
+    water: number;
+  };
+  champion_models: {
+    electricity: string;
+    water: string;
+  };
+  model_benchmark: {
+    electricity: Array<{
+      model: string;
+      mae: number;
+      mape_pct: number;
+      r2: number;
+      accuracy_pct: number;
+    }>;
+    water: Array<{
+      model: string;
+      mae: number;
+      mape_pct: number;
+      r2: number;
+      accuracy_pct: number;
+    }>;
+  };
+  predictions: Array<{
+    utility: string;
+    year: number;
+    month: number;
+    value: number;
+  }>;
+}
+
+export interface AlertConfigPayload {
+  electricity_threshold_pct: number;
+  water_threshold_pct: number;
+  volatility_threshold_pct: number;
+}
+
+export interface TargetPayload {
+  metric_name: string;
+  target_value: number;
+  unit: string;
+}
+
+export interface CustomMetricPayload {
+  name: string;
+  description: string;
+  unit: string;
+  target_value: number;
+  current_value: number;
+}
+
+export interface ETLSchedulePayload {
+  cron_expression: string;
+  enabled: boolean;
+}
+
+export interface User {
+  id: number;
+  company_id: number | null;
+  email: string;
+  full_name: string | null;
+  email_verified: boolean;
+  status: string;
+  role: string;
+  last_login_at: string | null;
+  created_at: string;
+}
+
+export interface LoginRequest {
+  email: string;
+  password: string;
+  remember_me?: boolean;
+}
+
+export interface LoginResponse {
+  access_token: string;
+  token_type: string;
+  user: User;
+}
+
+export interface RegisterRequest {
+  company_name: string;
+  full_name: string;
+  email: string;
+  password: string;
+}
+
+export interface RegisterResponse {
+  id: number;
+  email: string;
+  full_name: string;
+  status: string;
+  created_at: string;
+  verification_token: string;
+  message: string;
+}
+
+const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL ?? "/api").replace(/\/$/, "");
+const TOKEN_KEY = "eco_energy_token";
+const USER_KEY = "eco_energy_user";
+
+// Token management
+function setToken(token: string): void {
+  localStorage.setItem(TOKEN_KEY, token);
+}
+
+export function getToken(): string | null {
+  return localStorage.getItem(TOKEN_KEY);
+}
+
+function clearToken(): void {
+  localStorage.removeItem(TOKEN_KEY);
+  localStorage.removeItem(USER_KEY);
+}
+
+function setUser(user: User): void {
+  localStorage.setItem(USER_KEY, JSON.stringify(user));
+}
+
+function getUser(): User | null {
+  const user = localStorage.getItem(USER_KEY);
+  return user ? JSON.parse(user) : null;
+}
+
+function isTokenExpired(): boolean {
+  const token = getToken();
+  if (!token) return true;
+  try {
+    const parts = token.split(".");
+    if (parts.length !== 3) return true;
+    const payload = JSON.parse(atob(parts[1])) as { exp?: number };
+    if (!payload.exp) return true;
+    // 30s de margen para evitar race conditions justo al borde de la expiración
+    return Date.now() / 1000 > payload.exp - 30;
+  } catch {
+    return true;
+  }
+}
+
+async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
+  const token = getToken();
+  const headers = new Headers(options.headers ?? {});
+
+  if (token) {
+    headers.set("Authorization", `Bearer ${token}`);
+  }
+
+  if (!(options.body instanceof FormData)) {
+    headers.set("Content-Type", "application/json");
+  }
+
+  const response = await fetch(`${API_BASE_URL}${path}`, {
+    ...options,
+    headers,
+  });
+
+  // Handle 401 Unauthorized
+  if (response.status === 401) {
+    clearToken();
+    window.location.href = "/login";
+  }
+
+  if (!response.ok) {
+    let message = `Error ${response.status}`;
+    try {
+      const errorPayload = await response.json();
+      message = errorPayload?.detail ?? message;
+    } catch {
+      // Keep default message if response is not JSON.
+    }
+    throw new Error(message);
+  }
+
+  return (await response.json()) as T;
+}
+
+// Auth functions
+export async function login(credentials: LoginRequest): Promise<LoginResponse> {
+  const response = await request<LoginResponse>("/auth/login", {
+    method: "POST",
+    body: JSON.stringify(credentials),
+  });
+
+  setToken(response.access_token);
+  setUser(response.user);
+
+  return response;
+}
+
+export async function register(payload: RegisterRequest): Promise<RegisterResponse> {
+  const response = await request<RegisterResponse>("/auth/register", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+
+  return response;
+}
+
+export async function verifyEmail(token: string): Promise<{ message: string; user_id: number; email: string; status: string }> {
+  const response = await request<{ message: string; user_id: number; email: string; status: string }>(
+    `/auth/verify-email/${token}`,
+    {
+      method: "GET",
+    }
+  );
+
+  return response;
+}
+
+export async function forgotPassword(email: string): Promise<{ message: string; email: string }> {
+  const response = await request<{ message: string; email: string }>("/auth/forgot-password", {
+    method: "POST",
+    body: JSON.stringify({ email }),
+  });
+
+  return response;
+}
+
+export async function resetPassword(
+  token: string,
+  password: string
+): Promise<{ message: string; email: string }> {
+  const response = await request<{ message: string; email: string }>("/auth/reset-password", {
+    method: "POST",
+    body: JSON.stringify({ token, password }),
+  });
+
+  return response;
+}
+
+export async function backendLogout(): Promise<void> {
+  try {
+    await request<void>("/auth/logout", { method: "POST" });
+  } catch {
+    // Si el backend falla (token ya expirado, red caída), de igual forma
+    // limpiamos el estado local para no bloquear al usuario.
+  }
+}
+
+export function logout(): void {
+  clearToken();
+}
+
+export function isAuthenticated(): boolean {
+  return getToken() !== null && !isTokenExpired();
+}
+
+export function getTokenExpiresAt(): Date | null {
+  const token = getToken();
+  if (!token) return null;
+  try {
+    const parts = token.split(".");
+    if (parts.length !== 3) return null;
+    const payload = JSON.parse(atob(parts[1])) as { exp?: number };
+    if (!payload.exp) return null;
+    return new Date(payload.exp * 1000);
+  } catch {
+    return null;
+  }
+}
+
+export function getCurrentUser(): User | null {
+  return getUser();
+}
+
+// Dashboard functions
+export function fetchDashboardData(months = 12): Promise<DashboardData> {
+  return request<DashboardData>(`/dashboard/data?months=${months}&alert_limit=4&activity_limit=5`);
+}
+
+export async function uploadConsumptionCsv(file: File): Promise<ETLUploadResult> {
+  const formData = new FormData();
+  formData.append("file", file);
+  return request<ETLUploadResult>("/etl/upload", { method: "POST", body: formData });
+}
+
+export async function uploadElectricityCsv(file: File): Promise<ETLUploadResult> {
+  const formData = new FormData();
+  formData.append("file", file);
+  return request<ETLUploadResult>("/etl/upload/electricity", { method: "POST", body: formData });
+}
+
+export async function uploadWaterCsv(file: File): Promise<ETLUploadResult> {
+  const formData = new FormData();
+  formData.append("file", file);
+  return request<ETLUploadResult>("/etl/upload/water", { method: "POST", body: formData });
+}
+
+export async function uploadFuelTransactionsCsv(file: File): Promise<ETLUploadResult> {
+  const formData = new FormData();
+  formData.append("file", file);
+  return request<ETLUploadResult>("/etl/upload/fuel-transactions", { method: "POST", body: formData });
+}
+
+export async function uploadResourceCsv(code: string, file: File): Promise<ETLUploadResult> {
+  const formData = new FormData();
+  formData.append("file", file);
+  return request<ETLUploadResult>(`/etl/upload/resource/${code}`, { method: "POST", body: formData });
+}
+
+export function generateMonthlyReport(): Promise<ReportResult> {
+  return request<ReportResult>("/reports/monthly");
+}
+
+export function runMlTraining(horizonMonths = 3): Promise<MLTrainResult> {
+  return request<MLTrainResult>("/ml/train", {
+    method: "POST",
+    body: JSON.stringify({ horizon_months: horizonMonths }),
+  });
+}
+
+export async function exportConsumptionCsv(): Promise<Blob> {
+  return exportBlob("/export/consumption.csv");
+}
+
+export function createCustomMetric(payload: CustomMetricPayload): Promise<{ id: number; name: string }> {
+  return request<{ id: number; name: string }>("/metrics/custom", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export function updateAlertConfig(payload: AlertConfigPayload): Promise<AlertConfigPayload & { updated_at: string }> {
+  return request<AlertConfigPayload & { updated_at: string }>("/alerts/config", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export function defineTarget(payload: TargetPayload): Promise<{ id: number; metric_name: string }> {
+  return request<{ id: number; metric_name: string }>("/targets", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export function updateEtlSchedule(payload: ETLSchedulePayload): Promise<{ cron_expression: string; enabled: boolean }> {
+  return request<{ cron_expression: string; enabled: boolean }>("/etl/schedule", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export function runSampleEtl(): Promise<ETLUploadResult> {
+  return request<ETLUploadResult>("/etl/run-sample", {
+    method: "POST",
+  });
+}
+
+export interface OperationsUser {
+  id: number;
+  name: string | null;
+  email: string;
+  role: string;
+  status: string;
+  email_verified: boolean;
+  initials: string;
+  last_login_at: string | null;
+  created_at: string | null;
+}
+
+export interface OperationsOverview {
+  generated_at: string;
+  summary: DashboardSummary;
+  energy_catalog: Array<{
+    code: string;
+    label: string;
+    unit: string;
+    category: string;
+    metric_name: string;
+    lower_is_better: boolean;
+  }>;
+  timeseries: TimeseriesPoint[];
+  distribution: DistributionItem[];
+  efficiency: EfficiencyData;
+  electricity: {
+    cards: Array<{ label: string; value: number; unit: string; change_pct: number }>;
+    monthly: Array<{ mes: string; consumo: number; costo: number; prediccion?: number | null }>;
+    areas: Array<{ area: string; consumo: number; percentage: number }>;
+  };
+  water: {
+    cards: Array<{ label: string; value: number; unit: string; change_pct: number }>;
+    monthly: Array<{ mes: string; consumo: number; costo: number; prediccion?: number | null }>;
+    areas: Array<{ area: string; consumo: number; percentage: number }>;
+  };
+  metrics: Array<{ label: string; value: number; target: number; status: "good" | "warning" | "critical" }>;
+  kpis: Array<{
+    name: string;
+    code?: string;
+    value: number;
+    target: number;
+    unit: string;
+    progress: number;
+    status: "good" | "warning" | "critical";
+    trend: "up" | "down" | "stable";
+  }>;
+  map: Array<{
+    id: number;
+    name: string;
+    region: string | null;
+    electricity: number;
+    water: number;
+    resources: Record<string, number>;
+    status: string;
+    color: "default" | "secondary" | "destructive";
+  }>;
+  predictions: {
+    accuracy_pct: number;
+    projected_savings_usd: number;
+    anomaly_count: number;
+    accuracy_breakdown_pct: {
+      electricity: number;
+      water: number;
+    };
+    champion_models: {
+      electricity: string;
+      water: string;
+    };
+    benchmark: Record<
+      string,
+      Array<{
+        model: string;
+        mae: number;
+        mape_pct: number;
+        r2: number;
+        accuracy_pct: number;
+      }>
+    >;
+    annual_savings_summary: {
+      historical_savings_usd: number;
+      future_savings_usd: number;
+      avg_future_savings_pct: number;
+    };
+    energy_catalog: Array<{ code: string; label: string; unit: string }>;
+    series: Array<{
+      mes: string;
+      electricidad_real: number | null;
+      agua_real: number | null;
+      electricidad_pred: number | null;
+      agua_pred: number | null;
+      real: Record<string, number | null>;
+      pred: Record<string, number | null>;
+    }>;
+    recommendations: Array<{ text: string; type: "high" | "medium" | "low" }>;
+  };
+  trends: {
+    series: Array<{
+      mes: string;
+      electricidad: number | null;
+      agua: number | null;
+      energy_values: Record<string, number | null>;
+      energy_predictions: Record<string, number | null>;
+    }>;
+    electricity_change_pct: number;
+    water_change_pct: number;
+    changes: Array<{ code: string; label: string; unit: string; change_pct: number }>;
+    insights: string[];
+  };
+  anomalies: {
+    critical: number;
+    warning: number;
+    resolved: number;
+    items: Array<{
+      id: number;
+      date: string | null;
+      type: string;
+      area: string;
+      severity: AlertSeverity;
+      value: string;
+      status: string;
+      description: string;
+    }>;
+  };
+  comparisons: {
+    software_start_year: number | null;
+    baseline_years: number[];
+    future_projection_years: number[];
+    summary: {
+      historical_savings_usd: number;
+      future_savings_usd: number;
+      avg_future_savings_pct: number;
+    };
+    rows: Array<{
+      year: number;
+      periodo: string;
+      scenario_type: "historical" | "predictive";
+      software_enabled: boolean;
+      electricity_kwh_without_software: number;
+      electricity_kwh_with_software: number;
+      water_m3_without_software: number;
+      water_m3_with_software: number;
+      electricity_cost_without_software_usd: number;
+      electricity_cost_with_software_usd: number;
+      water_cost_without_software_usd: number;
+      water_cost_with_software_usd: number;
+      total_cost_without_software_usd: number;
+      total_cost_with_software_usd: number;
+      projected_savings_usd: number;
+      projected_savings_pct: number;
+    }>;
+  };
+  goals: Array<{
+    id: number | string;
+    name: string;
+    target: number;
+    current: number;
+    unit: string;
+    progress: number;
+    deadline: string | null;
+    status: string;
+  }>;
+  uploads: Array<{
+    id: number;
+    name: string;
+    date: string | null;
+    rows_processed: number;
+    rows_rejected: number;
+    status: string;
+  }>;
+  reports: Array<{
+    id: number;
+    name: string;
+    type: string;
+    date: string;
+    size: string;
+    month_label: string;
+    total_cost_usd: number;
+  }>;
+  exports: Array<{
+    id: "consumption" | "predictions" | "alerts";
+    title: string;
+    desc: string;
+    formats: string[];
+  }>;
+  database: {
+    storage_mb: number;
+    tables_active: number;
+    uptime_pct: number;
+    tables: Array<{ name: string; rows: number; size: string; status: string }>;
+  };
+  calendar: Array<{ id: string; date: string; title: string; type: string }>;
+  alerts_center: {
+    unread_count: number;
+    items: Array<{
+      id: number;
+      title: string;
+      desc: string;
+      severity: AlertSeverity;
+      date: string | null;
+      read: boolean;
+      utility: string | null;
+    }>;
+  };
+  users: OperationsUser[];
+  company: {
+    name: string;
+    industry: string | null;
+    employees: number;
+    facilities: number;
+    website: string | null;
+    plan: string;
+    license_until: string;
+    storage: string;
+  };
+  settings: {
+    notify_email: boolean;
+    notify_in_app: boolean;
+    electricity_threshold_pct: number;
+    water_threshold_pct: number;
+    volatility_threshold_pct: number;
+    etl_enabled: boolean;
+    etl_cron_expression: string;
+  };
+  security: {
+    sessions: Array<{ device: string; ip: string; date: string | null; current: boolean }>;
+    audit: Array<{ action: string; user: string; date: string | null }>;
+  };
+}
+
+export interface CreateOperationsUserPayload {
+  full_name: string;
+  email: string;
+  password?: string;
+  role: string;
+  status: string;
+  email_verified?: boolean;
+}
+
+export interface UpdateOperationsSettingsPayload {
+  notify_email?: boolean;
+  notify_in_app?: boolean;
+  electricity_threshold_pct?: number;
+  water_threshold_pct?: number;
+  volatility_threshold_pct?: number;
+  etl_enabled?: boolean;
+  etl_cron_expression?: string;
+}
+
+export function fetchOperationsOverview(months: number = 12): Promise<OperationsOverview> {
+  return request<OperationsOverview>(`/operations/overview?months=${months}`);
+}
+
+export function resolveAlert(alertId: number): Promise<{ id: number; resolved: boolean; title: string }> {
+  return request<{ id: number; resolved: boolean; title: string }>(`/operations/alerts/${alertId}/resolve`, {
+    method: "POST",
+  });
+}
+
+export function resolveAllAlerts(): Promise<{ resolved: number }> {
+  return request<{ resolved: number }>("/operations/alerts/resolve-all", {
+    method: "POST",
+  });
+}
+
+export function createOperationsUser(payload: CreateOperationsUserPayload): Promise<{
+  id: number;
+  email: string;
+  full_name: string;
+  role: string;
+  status: string;
+  email_verified: boolean;
+  temporary_password: string | null;
+  created_at: string;
+}> {
+  return request("/operations/users", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export function updateOperationsSettings(
+  payload: UpdateOperationsSettingsPayload
+): Promise<OperationsOverview["settings"]> {
+  return request<OperationsOverview["settings"]>("/operations/settings", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export interface ResourceCatalogItem {
+  code: string;
+  name: string;
+  category: string;
+  unit: string;
+  regulatory_body: string | null;
+  description: string | null;
+}
+
+export interface ResourceOverviewCard {
+  label: string;
+  value: number;
+  unit: string;
+  change_pct: number;
+}
+
+export interface ResourceMonthlyPoint {
+  year: number;
+  month: number;
+  mes: string;
+  consumo: number;
+  costo: number;
+}
+
+export interface ResourceAreaPoint {
+  area: string;
+  consumo: number;
+  percentage: number;
+}
+
+export interface ResourcePredictionPoint {
+  year: number;
+  month: number;
+  mes: string;
+  value: number;
+}
+
+export interface ResourceOverviewAlert {
+  id: number;
+  severity: AlertSeverity;
+  title: string;
+  description: string;
+  year: number | null;
+  month: number | null;
+  created_at: string;
+}
+
+export interface FuelBreakdownPoint {
+  year: number;
+  month: number;
+  mes: string;
+  fuel_type: "D" | "G";
+  consumo: number;
+  costo: number;
+  co2_kg: number;
+}
+
+export interface ResourceOverview {
+  resource: ResourceCatalogItem;
+  fuel_breakdown: FuelBreakdownPoint[];
+  cards: ResourceOverviewCard[];
+  monthly: ResourceMonthlyPoint[];
+  areas: ResourceAreaPoint[];
+  predictions: ResourcePredictionPoint[];
+  alerts: ResourceOverviewAlert[];
+  /** "fuel_transactions" | "aggregated_scope1" | "synthetic_seed" */
+  data_source?: string;
+  /** Desglose tCO2e por fuente Scope 1 (solo para code="emisiones_co2e") */
+  scope1_breakdown?: Record<string, number>;
+}
+
+export function fetchResourceCatalog(): Promise<ResourceCatalogItem[]> {
+  return request<ResourceCatalogItem[]>("/resources/catalog");
+}
+
+export function fetchResourceOverview(resourceCode: string, months: number = 12): Promise<ResourceOverview> {
+  return request<ResourceOverview>(`/resources/${resourceCode}/overview?months=${months}`);
+}
+
+export type UtilityReportPeriodType = "monthly" | "annual" | "range";
+
+export async function downloadUtilityConsumptionReport(
+  utility: "electricity" | "water",
+  options: {
+    periodType: UtilityReportPeriodType;
+    year?: number;
+    month?: number;
+    startDate?: string;
+    endDate?: string;
+  }
+): Promise<{ blob: Blob; filename: string }> {
+  const token = getToken();
+  const headers = new Headers();
+  if (token) headers.set("Authorization", `Bearer ${token}`);
+
+  const response = await fetch(
+    `${API_BASE_URL}${withQuery("/operations/reports/utility.pdf", {
+      utility,
+      period_type: options.periodType,
+      year: options.year,
+      month: options.month,
+      start_date: options.startDate,
+      end_date: options.endDate,
+    })}`,
+    { headers }
+  );
+
+  if (!response.ok) {
+    let message = "No se pudo generar el reporte PDF.";
+    try {
+      const payload = await response.json();
+      message = payload?.detail ?? message;
+    } catch {
+      // Keep fallback message.
+    }
+    throw new Error(message);
+  }
+
+  const blob = await response.blob();
+  const disposition = response.headers.get("content-disposition") ?? "";
+  const matched = disposition.match(/filename=([^;]+)/i);
+  const filename = matched ? matched[1].replace(/"/g, "") : `reporte_${utility}.pdf`;
+  return { blob, filename };
+}
+
+export async function downloadResourceReport(
+  resourceCode: string,
+  options: {
+    periodType: UtilityReportPeriodType;
+    year?: number;
+    month?: number;
+    startDate?: string;
+    endDate?: string;
+  }
+): Promise<{ blob: Blob; filename: string }> {
+  const token = getToken();
+  const headers = new Headers();
+  if (token) headers.set("Authorization", `Bearer ${token}`);
+
+  const response = await fetch(
+    `${API_BASE_URL}${withQuery(`/resources/${resourceCode}/report.pdf`, {
+      period_type: options.periodType,
+      year: options.year,
+      month: options.month,
+      start_date: options.startDate,
+      end_date: options.endDate,
+    })}`,
+    { headers }
+  );
+
+  if (!response.ok) {
+    let message = "No se pudo generar el reporte PDF.";
+    try {
+      const payload = await response.json();
+      message = payload?.detail ?? message;
+    } catch {
+      // Mantener mensaje por defecto.
+    }
+    throw new Error(message);
+  }
+
+  const blob = await response.blob();
+  const disposition = response.headers.get("content-disposition") ?? "";
+  const matched = disposition.match(/filename=([^;]+)/i);
+  const filename = matched ? matched[1].replace(/"/g, "") : `reporte_${resourceCode}.pdf`;
+  return { blob, filename };
+}
+
+async function exportBlob(path: string): Promise<Blob> {
+  const token = getToken();
+  const headers = new Headers();
+  if (token) {
+    headers.set("Authorization", `Bearer ${token}`);
+  }
+
+  const response = await fetch(`${API_BASE_URL}${path}`, { headers });
+  if (!response.ok) {
+    throw new Error("No se pudo exportar el archivo.");
+  }
+  return response.blob();
+}
+
+export async function exportPredictionsCsv(): Promise<Blob> {
+  const overview = await fetchOperationsOverview();
+  const energyCodes = overview.energy_catalog.map((item) => item.code);
+  const header = [
+    "mes",
+    ...energyCodes.map((code) => `${code}_real`),
+    ...energyCodes.map((code) => `${code}_pred`),
+  ];
+
+  const lines = overview.predictions.series.map((item) => {
+    const real = energyCodes.map((code) => String(item.real?.[code] ?? ""));
+    const pred = energyCodes.map((code) => String(item.pred?.[code] ?? ""));
+    return [item.mes, ...real, ...pred].join(",");
+  });
+  const csvBody = [header.join(","), ...lines].join("\n");
+  return new Blob([csvBody], { type: "text/csv;charset=utf-8;" });
+}
+
+export async function exportAlertsCsv(): Promise<Blob> {
+  const overview = await fetchOperationsOverview();
+  const header = ["id", "titulo", "severidad", "estado", "fecha", "descripcion"];
+  const lines = overview.alerts_center.items.map((item) =>
+    [item.id, item.title, item.severity, item.read ? "resuelta" : "abierta", item.date ?? "", item.desc.replaceAll(",", " ")].join(",")
+  );
+  return new Blob([[header.join(","), ...lines].join("\n")], { type: "text/csv;charset=utf-8;" });
+}
+
+export async function exportConsumptionJson(): Promise<Blob> {
+  const overview = await fetchOperationsOverview();
+  return new Blob([JSON.stringify(overview.timeseries, null, 2)], { type: "application/json" });
+}
+
+export async function exportPredictionsJson(): Promise<Blob> {
+  const overview = await fetchOperationsOverview();
+  return new Blob([JSON.stringify(overview.predictions.series, null, 2)], { type: "application/json" });
+}
+
+export interface ComplianceStandard {
+  id: number;
+  code: string;
+  name: string;
+  version: string | null;
+  description: string | null;
+  source_url: string | null;
+  is_active: boolean;
+}
+
+export interface ComplianceRequirement {
+  id: number;
+  code: string;
+  title: string;
+  utility: string;
+  metric_name: string;
+  limit_operator: "<=" | "<" | ">=" | ">" | "==";
+  limit_value: number;
+  limit_unit: string;
+  warning_ratio: number;
+  severity_on_breach: AlertSeverity;
+  jurisdiction: string | null;
+  legal_reference: string | null;
+  standard_code: string | null;
+  is_active: boolean;
+}
+
+export interface ComplianceEvaluation {
+  requirement_id: number;
+  code: string;
+  title: string;
+  utility: string;
+  metric_name: string;
+  observed_value: number;
+  limit_operator: string;
+  limit_value: number;
+  unit: string;
+  status: "compliant" | "warning" | "breach";
+  risk_level: "low" | "medium" | "high" | "critical";
+  risk_score: number;
+  legal_reference: string | null;
+}
+
+export interface ComplianceSummary {
+  year: number;
+  month: number;
+  month_label: string;
+  summary: { compliant: number; warning: number; breach: number };
+  evaluations: ComplianceEvaluation[];
+}
+
+export interface CertifiableReportMetadata {
+  report_code: string;
+  report_name: string;
+  report_format: "pdf" | "xlsx";
+  year: number;
+  month: number;
+  generated_at: string;
+  sha256_hash: string;
+  digital_signature: string;
+  verification_token: string;
+}
+
+export interface CalibrationPayload {
+  meter_code: string;
+  meter_name: string;
+  facility_name?: string;
+  utility: string;
+  performed_by: string;
+  calibrated_at: string;
+  valid_until: string;
+  notes?: string;
+}
+
+export interface CalibrationItem {
+  id: number;
+  meter_code: string;
+  meter_name: string;
+  facility_name: string | null;
+  utility: string;
+  calibrated_at: string;
+  valid_until: string;
+  performed_by: string;
+  status: "valid" | "expiring" | "expired";
+  certificate_number: string | null;
+}
+
+export interface CalibrationCertificate {
+  calibration_id: number;
+  certificate_number: string;
+  issued_at: string;
+  expires_at: string;
+  issuer: string;
+  sha256_hash: string;
+  digital_signature: string;
+  payload: Record<string, unknown>;
+}
+
+export interface AuditChainValidation {
+  valid: boolean;
+  total_blocks: number;
+  checked_at: string;
+  broken_block_id: number | null;
+  message: string;
+}
+
+function withQuery(
+  basePath: string,
+  params: Record<string, string | number | boolean | undefined | null>
+): string {
+  const query = new URLSearchParams();
+  Object.entries(params).forEach(([key, value]) => {
+    if (value !== undefined && value !== null && value !== "") {
+      query.set(key, String(value));
+    }
+  });
+  const raw = query.toString();
+  return raw ? `${basePath}?${raw}` : basePath;
+}
+
+export function fetchComplianceStandards(): Promise<ComplianceStandard[]> {
+  return request<ComplianceStandard[]>("/fiscalizacion/standards");
+}
+
+export function fetchComplianceRequirements(activeOnly: boolean = true): Promise<ComplianceRequirement[]> {
+  return request<ComplianceRequirement[]>(
+    withQuery("/fiscalizacion/requirements", { active_only: activeOnly })
+  );
+}
+
+export function upsertComplianceRequirement(
+  payload: Omit<ComplianceRequirement, "id" | "is_active" | "standard_code"> & { standard_code?: string | null }
+): Promise<ComplianceRequirement> {
+  return request<ComplianceRequirement>("/fiscalizacion/requirements", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export function fetchComplianceSummary(year?: number, month?: number): Promise<ComplianceSummary> {
+  return request<ComplianceSummary>(withQuery("/fiscalizacion/compliance/summary", { year, month }));
+}
+
+export function evaluateCompliance(year?: number, month?: number): Promise<ComplianceSummary> {
+  return request<ComplianceSummary>(withQuery("/fiscalizacion/compliance/evaluate", { year, month }), {
+    method: "POST",
+  });
+}
+
+export function fetchCertifiableReportHistory(limit: number = 20): Promise<CertifiableReportMetadata[]> {
+  return request<CertifiableReportMetadata[]>(
+    withQuery("/fiscalizacion/reports/history", { limit })
+  );
+}
+
+export function generateCertifiableReportMetadata(
+  reportFormat: "pdf" | "xlsx",
+  year?: number,
+  month?: number
+): Promise<CertifiableReportMetadata> {
+  return request<CertifiableReportMetadata>(
+    withQuery("/fiscalizacion/reports/certifiable", {
+      report_format: reportFormat,
+      year,
+      month,
+    })
+  );
+}
+
+export async function downloadCertifiableReport(
+  reportFormat: "pdf" | "xlsx",
+  year?: number,
+  month?: number
+): Promise<{
+  blob: Blob;
+  filename: string;
+  reportCode: string | null;
+  sha256Hash: string | null;
+  signature: string | null;
+}> {
+  const token = getToken();
+  const headers = new Headers();
+  if (token) headers.set("Authorization", `Bearer ${token}`);
+
+  const response = await fetch(
+    `${API_BASE_URL}${withQuery("/fiscalizacion/reports/certifiable/download", {
+      report_format: reportFormat,
+      year,
+      month,
+    })}`,
+    { headers }
+  );
+  if (!response.ok) {
+    throw new Error("No se pudo generar el reporte certificable.");
+  }
+
+  const blob = await response.blob();
+  const disposition = response.headers.get("content-disposition") ?? "";
+  const matched = disposition.match(/filename=([^;]+)/i);
+  const filename = matched ? matched[1].replace(/"/g, "") : `reporte_certificable.${reportFormat}`;
+
+  return {
+    blob,
+    filename,
+    reportCode: response.headers.get("x-report-code"),
+    sha256Hash: response.headers.get("x-report-hash"),
+    signature: response.headers.get("x-report-signature"),
+  };
+}
+
+export function fetchCalibrations(limit: number = 100): Promise<CalibrationItem[]> {
+  return request<CalibrationItem[]>(withQuery("/fiscalizacion/calibrations", { limit }));
+}
+
+export function createCalibration(payload: CalibrationPayload): Promise<CalibrationItem> {
+  return request<CalibrationItem>("/fiscalizacion/calibrations", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export function fetchCalibrationCertificate(calibrationId: number): Promise<CalibrationCertificate> {
+  return request<CalibrationCertificate>(`/fiscalizacion/calibrations/${calibrationId}/certificate`);
+}
+
+export function verifyAuditChainIntegrity(): Promise<AuditChainValidation> {
+  return request<AuditChainValidation>("/fiscalizacion/audit/chain/verify");
+}
+
+export function exportAuditLogs(format: "csv" | "json" = "csv"): Promise<Blob> {
+  return exportBlob(withQuery("/fiscalizacion/audit/logs/export", { export_format: format }));
+}
+
+export function exportAuditChain(format: "csv" | "json" = "csv"): Promise<Blob> {
+  return exportBlob(withQuery("/fiscalizacion/audit/chain/export", { export_format: format }));
+}
+
+export function exportRawAuditableData(format: "json" | "zip" = "zip"): Promise<Blob> {
+  return exportBlob(withQuery("/fiscalizacion/export/raw", { export_format: format }));
+}
+
+// --- Predicción de combustible (Melanie - Sprint 3) ---
+
+export interface FuelPredictionRequest {
+  vehicle_cat: "Van" | "Truck" | "Bus" | "Car";
+  fuel_type: "D" | "G";
+  dist_km: number;
+  km_per_liter?: number | null;
+  precio_litro_clp: number;
+}
+
+export interface EscenarioOptimizacion {
+  km_per_liter_efectivo: number;
+  km_per_liter_mejorado: number;
+  fuel_liters_mejorado: number;
+  costo_clp_mejorado: number;
+  co2_kg_mejorado: number;
+  ahorro_litros: number;
+  ahorro_clp: number;
+  ahorro_co2_kg: number;
+  mejora_eficiencia_pct: number;
+}
+
+export interface FuelPredictionResponse {
+  fuel_liters: number;
+  co2_kg: number;
+  co2_toneladas: number;
+  costo_clp: number;
+  costo_por_km_clp: number;
+  fuel_type_label: string;
+  vehicle_cat: string;
+  dist_km: number;
+  km_per_liter_usado: number;
+  km_per_liter_fue_imputado: boolean;
+  precio_litro_clp: number;
+  model_name: string;
+  error_rel_pct: number;
+  optimizacion: EscenarioOptimizacion;
+}
+
+export function predictFuelConsumption(payload: FuelPredictionRequest): Promise<FuelPredictionResponse> {
+  return request<FuelPredictionResponse>("/combustible-ml/predict", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export interface FuelPredictionLogItem {
+  id: number;
+  vehicle_cat: string;
+  fuel_type: string;
+  dist_km: number;
+  km_per_liter_usado: number;
+  km_per_liter_fue_imputado: boolean;
+  precio_litro_clp: number;
+  fuel_liters: number;
+  co2_kg: number;
+  costo_clp: number;
+  ahorro_litros: number;
+  ahorro_clp: number;
+  ahorro_co2_kg: number;
+  created_at: string;
+}
+
+export function getFuelHistorial(limit = 20): Promise<FuelPredictionLogItem[]> {
+  return request<FuelPredictionLogItem[]>(`/combustible-ml/historial?limit=${limit}`);
+}
+
+export interface FuelTransactionItem {
+  id: number;
+  facility_id: number | null;
+  vehicle_id: string;
+  vehicle_cat: string;
+  fuel_type: string;
+  fecha: string;
+  dist_km: number;
+  fuel_liters_real: number | null;
+  km_per_liter: number | null;
+  precio_litro_clp: number;
+  notas: string | null;
+  created_at: string;
+}
+
+export interface FuelTransactionCreate {
+  facility_id?: number | null;
+  vehicle_id: string;
+  vehicle_cat: "Van" | "Truck" | "Bus" | "Car";
+  fuel_type: "D" | "G";
+  fecha: string;
+  dist_km: number;
+  fuel_liters_real?: number | null;
+  km_per_liter?: number | null;
+  precio_litro_clp: number;
+  notas?: string | null;
+}
+
+export interface AnomaliaFlota {
+  id_transaccion: number;
+  vehicle_id: string;
+  vehicle_cat: string;
+  fecha: string;
+  fuel_liters_real: number;
+  fuel_liters_predicho: number;
+  desvio_pct: number;
+  severidad: "baja" | "media" | "alta";
+  co2_exceso_kg: number;
+  precio_litro_clp: number;
+  costo_exceso_clp: number;
+  notas: string | null;
+}
+
+export interface ConsumoMensualFlota {
+  periodo: string;
+  year: number;
+  month: number;
+  label: string;
+  real_litros: number;
+  predicho_litros: number;
+  desvio_pct: number;
+  co2_real_kg: number;
+  co2_predicho_kg: number;
+  diesel_real_l: number | null;
+  gasoil_real_l: number | null;
+  diesel_pred_l: number | null;
+  gasoil_pred_l: number | null;
+}
+
+export interface AnalisisFlotaResult {
+  precision_promedio_pct: number;
+  total_registros_analizados: number;
+  registros_con_desvio: number;
+  ahorro_proyectado_litros: number;
+  ahorro_proyectado_clp: number;
+  reduccion_co2_proyectada_kg: number;
+  anomalias: AnomaliaFlota[];
+  consumo_por_periodo: ConsumoMensualFlota[];
+  modelo_info: {
+    nombre: string;
+    error_relativo_pct: number;
+    registros_entrenamiento: number;
+    registros_flota_analizados: number;
+    total_transacciones_sistema: number;
+  };
+}
+
+export function getAnalisisFlota(): Promise<AnalisisFlotaResult> {
+  return request<AnalisisFlotaResult>("/combustible-ml/analisis-flota");
+}
+
+export function getConsumoMensualFlota(): Promise<Record<string, unknown>[]> {
+  return request<Record<string, unknown>[]>("/combustible-ml/consumo-mensual");
+}
+
+export function getFuelTransacciones(limit = 50): Promise<FuelTransactionItem[]> {
+  return request<FuelTransactionItem[]>(`/combustible-ml/transacciones?limit=${limit}`);
+}
+
+export function createFuelTransaccion(payload: FuelTransactionCreate): Promise<FuelTransactionItem> {
+  return request<FuelTransactionItem>("/combustible-ml/transacciones", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function exportRetcCsv(anio?: number): Promise<Blob> {
+  const path = anio
+    ? `/combustible-ml/exportar-retc?anio=${anio}`
+    : "/combustible-ml/exportar-retc";
+  return exportBlob(path);
+}
+
+export interface ModeloEstado {
+  trained_with_company_data: boolean;
+  uses_year: boolean;
+  n_empresa: number | null;
+  n_base: number | null;
+  error_relativo_empresa_pct: number | null;
+  mae_empresa_L: number | null;
+  retrained_at: string | null;
+  n_transacciones_disponibles: number;
+  puede_reentrenar: boolean;
+  min_registros_requeridos: number;
+}
+
+export function getModeloEstado(): Promise<ModeloEstado> {
+  return request<ModeloEstado>("/combustible-ml/modelo-estado");
+}
+
+export function reentrenarCombustible(): Promise<Record<string, unknown>> {
+  return request<Record<string, unknown>>("/combustible-ml/reentrenar", {
+    method: "POST",
+  });
+}
