@@ -1,0 +1,14 @@
+__pycache__/
+*.py[cod]
+.env
+
+backend/data/uploads/*
+!backend/data/uploads/.gitkeep
+
+frontend/node_modules/
+frontend/dist/
+
+# Ignore local task files
+tareas_frontend.md
+seguridad_autenticacion.md
+MI_GUIA_PROYECTO.md
