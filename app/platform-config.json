@@ -1,0 +1,49 @@
+{
+  "profile": {
+    "name": "enterprise-default",
+    "version": "1.0.0",
+    "owner": "EcoEnergy Platform"
+  },
+  "organization": {
+    "default_company_name": "Green Glow Industries",
+    "industry": "Manufactura",
+    "timezone": "America/Santiago"
+  },
+  "dashboard": {
+    "title": "Dashboard de Eficiencia Energética",
+    "default_timeseries_months": 12,
+    "show_costs_in": "USD"
+  },
+  "alerts": {
+    "electricity_threshold_pct": 20,
+    "water_threshold_pct": 18,
+    "volatility_threshold_pct": 15
+  },
+  "etl": {
+    "cron_expression": "0 6 1 * *",
+    "enabled": true,
+    "source_priority": ["csv", "api", "manual"]
+  },
+  "ml": {
+    "default_horizon_months": 3,
+    "algorithm": "RandomForestRegressor",
+    "min_required_months": 6
+  },
+  "efficiency_targets": [
+    {
+      "metric_name": "electricity_kwh",
+      "target_value": 5200,
+      "unit": "kWh"
+    },
+    {
+      "metric_name": "water_m3",
+      "target_value": 2500,
+      "unit": "m3"
+    },
+    {
+      "metric_name": "co2_avoided_ton",
+      "target_value": 1.6,
+      "unit": "Ton"
+    }
+  ]
+}
