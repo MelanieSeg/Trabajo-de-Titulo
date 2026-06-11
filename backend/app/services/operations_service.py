@@ -1,0 +1,1880 @@
+from __future__ import annotations
+
+from calendar import monthrange
+from datetime import datetime, timedelta, timezone
+from secrets import token_urlsafe
+from typing import Any
+
+from sqlalchemy import extract, func, select, text
+from sqlalchemy.orm import Session
+
+from app.core.security import hash_password
+from app.db.models import (
+    ActivityLog,
+    AlertConfig,
+    AreaDistribution,
+    Company,
+    CustomMetric,
+    ETLJob,
+    ETLSchedule,
+    EfficiencyTarget,
+    Facility,
+    FuelTransaction,
+    MLPrediction,
+    MonthlyConsumption,
+    ResourceMonthlyConsumption,
+    ResourceType,
+    SmartAlert,
+    User,
+)
+from app.services.activity_service import log_activity
+from app.services.alert_service import get_or_create_alert_config, regenerate_anomaly_alerts
+from app.services.dashboard_service import get_distribution, get_efficiency
+from app.services.resource_service import list_resource_catalog
+from app.utils.date_utils import month_key, month_label, next_month
+
+
+PRIMARY_ENERGIES = [
+    {
+        "code": "electricity",
+        "label": "Electricidad",
+        "unit": "kWh",
+        "category": "Energía base",
+        "metric_name": "electricity_kwh",
+        "lower_is_better": True,
+    },
+    {
+        "code": "water",
+        "label": "Agua",
+        "unit": "m³",
+        "category": "Consumo hídrico",
+        "metric_name": "water_m3",
+        "lower_is_better": True,
+    },
+    {
+        "code": "fuel_diesel",
+        "label": "Diésel (flota)",
+        "unit": "L",
+        "category": "Flota",
+        "metric_name": "fuel_diesel_liters",
+        "lower_is_better": True,
+    },
+    {
+        "code": "fuel_gasoil",
+        "label": "Gas Oil (flota)",
+        "unit": "L",
+        "category": "Flota",
+        "metric_name": "fuel_gasoil_liters",
+        "lower_is_better": True,
+    },
+]
+
+
+
+def _safe_float(value: Any) -> float:
+    if value is None:
+        return 0.0
+    return float(value)
+
+
+def _pct_change(current: float, previous: float) -> float:
+    if previous == 0:
+        return 0.0
+    return ((current - previous) / previous) * 100
+
+
+def _trend(change_pct: float) -> str:
+    if change_pct > 0.8:
+        return "up"
+    if change_pct < -0.8:
+        return "down"
+    return "stable"
+
+
+def _status_from_progress(progress_pct: float) -> str:
+    if progress_pct >= 100:
+        return "good"
+    if progress_pct >= 80:
+        return "warning"
+    return "critical"
+
+
+def _resource_meta_map(db: Session) -> dict[str, dict[str, Any]]:
+    rows = db.scalars(select(ResourceType).where(ResourceType.is_active.is_(True)).order_by(ResourceType.name.asc())).all()
+    return {
+        row.code: {
+            "code": row.code,
+            "label": row.name,
+            "unit": row.unit,
+            "category": row.category,
+            "metric_name": row.code,
+            "lower_is_better": row.code != "energia_renovable",
+        }
+        for row in rows
+    }
+
+
+def _energy_catalog(db: Session) -> list[dict[str, Any]]:
+    resource_items = list_resource_catalog(db)
+    resource_map = _resource_meta_map(db)
+
+    payload: list[dict[str, Any]] = [dict(item) for item in PRIMARY_ENERGIES]
+    for resource in resource_items:
+        code = resource["code"]
+        meta = resource_map.get(
+            code,
+            {
+                "metric_name": code,
+                "lower_is_better": code != "energia_renovable",
+            },
+        )
+        payload.append(
+            {
+                "code": code,
+                "label": resource["name"],
+                "unit": resource["unit"],
+                "category": resource["category"],
+                "metric_name": meta["metric_name"],
+                "lower_is_better": meta["lower_is_better"],
+            }
+        )
+    return payload
+
+
+def _metric_name_for_energy(catalog: list[dict[str, Any]], code: str) -> str:
+    for item in catalog:
+        if item["code"] == code:
+            return str(item.get("metric_name") or code)
+    return code
+
+
+def _lower_is_better_energy(catalog: list[dict[str, Any]], code: str) -> bool:
+    for item in catalog:
+        if item["code"] == code:
+            return bool(item.get("lower_is_better", True))
+    return True
+
+
+def _default_target_for_energy(catalog: list[dict[str, Any]], code: str, current: float) -> float:
+    if current <= 0:
+        return 0.0
+    if _lower_is_better_energy(catalog, code):
+        return round(current * 0.92, 2)
+    return round(current * 1.08, 2)
+
+
+def _monthly_aggregates(db: Session, months: int | None = 12) -> list[dict[str, Any]]:
+    stmt = (
+        select(
+            MonthlyConsumption.year.label("year"),
+            MonthlyConsumption.month.label("month"),
+            func.sum(MonthlyConsumption.electricity_kwh).label("electricity_kwh"),
+            func.sum(MonthlyConsumption.water_m3).label("water_m3"),
+            func.sum(MonthlyConsumption.electricity_cost_usd).label("electricity_cost_usd"),
+            func.sum(MonthlyConsumption.water_cost_usd).label("water_cost_usd"),
+            func.sum(MonthlyConsumption.electricity_cost_usd + MonthlyConsumption.water_cost_usd).label("total_cost_usd"),
+            func.sum(MonthlyConsumption.co2_avoided_ton).label("co2_avoided_ton"),
+        )
+        .group_by(MonthlyConsumption.year, MonthlyConsumption.month)
+        .order_by(MonthlyConsumption.year, MonthlyConsumption.month)
+    )
+
+    rows = db.execute(stmt).all()
+    result = []
+
+    # Limitar a los últimos N meses cuando corresponda.
+    if months is not None and months > 0 and len(rows) > months:
+        rows = rows[-months:]
+
+    for row in rows:
+        result.append(
+            {
+                "year": int(row.year),
+                "month": int(row.month),
+                "label": month_label(int(row.year), int(row.month)),
+                "electricity_kwh": round(_safe_float(row.electricity_kwh), 2),
+                "water_m3": round(_safe_float(row.water_m3), 2),
+                "electricity_cost_usd": round(_safe_float(row.electricity_cost_usd), 2),
+                "water_cost_usd": round(_safe_float(row.water_cost_usd), 2),
+                "total_cost_usd": round(_safe_float(row.total_cost_usd), 2),
+                "co2_avoided_ton": round(_safe_float(row.co2_avoided_ton), 2),
+            }
+        )
+    return result
+
+
+def _forecast_from_history(history: list[tuple[int, int, float]], horizon: int = 3) -> list[tuple[int, int, float]]:
+    if not history:
+        return []
+
+    values = [item[2] for item in history]
+    if len(values) == 1:
+        baseline = values[-1]
+        slope = 0.0
+    else:
+        window = values[-3:] if len(values) >= 3 else values
+        baseline = sum(window) / len(window)
+        slope = (window[-1] - window[0]) / max(len(window) - 1, 1)
+
+    year, month, _ = history[-1]
+    payload: list[tuple[int, int, float]] = []
+    for step in range(1, horizon + 1):
+        year, month = next_month(year, month)
+        value = max(0.0, baseline + slope * step * 0.8)
+        payload.append((year, month, round(value, 2)))
+    return payload
+
+
+def _build_energy_timeseries(
+    db: Session,
+    *,
+    monthly: list[dict[str, Any]],
+    energy_catalog: list[dict[str, Any]],
+    months: int,
+) -> list[dict[str, Any]]:
+    combined: dict[int, dict[str, Any]] = {}
+    energy_codes = [item["code"] for item in energy_catalog]
+
+    for row in monthly:
+        key = month_key(int(row["year"]), int(row["month"]))
+        combined[key] = {
+            "year": int(row["year"]),
+            "month": int(row["month"]),
+            "label": row["label"],
+            "energy_values": {
+                "electricity": round(_safe_float(row["electricity_kwh"]), 2),
+                "water": round(_safe_float(row["water_m3"]), 2),
+            },
+            "energy_predictions": {},
+        }
+
+    if monthly:
+        min_key = month_key(int(monthly[0]["year"]), int(monthly[0]["month"]))
+    else:
+        min_key = 0
+
+    resource_rows = db.execute(
+        select(
+            ResourceMonthlyConsumption.year,
+            ResourceMonthlyConsumption.month,
+            ResourceType.code,
+            func.sum(ResourceMonthlyConsumption.consumption_value).label("value"),
+        )
+        .join(ResourceType, ResourceType.id == ResourceMonthlyConsumption.resource_type_id)
+        .where(ResourceType.is_active.is_(True))
+        .group_by(ResourceMonthlyConsumption.year, ResourceMonthlyConsumption.month, ResourceType.code)
+        .order_by(ResourceMonthlyConsumption.year, ResourceMonthlyConsumption.month)
+    ).all()
+
+    for row in resource_rows:
+        key = month_key(int(row.year), int(row.month))
+        if min_key and key < min_key:
+            continue
+        if key not in combined:
+            combined[key] = {
+                "year": int(row.year),
+                "month": int(row.month),
+                "label": month_label(int(row.year), int(row.month)),
+                "energy_values": {},
+                "energy_predictions": {},
+            }
+        combined[key]["energy_values"][str(row.code)] = round(_safe_float(row.value), 2)
+
+    # Agregar consumo mensual de combustible por tipo (Diésel / Gas Oil)
+    fuel_rows = db.execute(
+        select(
+            extract("year", FuelTransaction.fecha).label("year"),
+            extract("month", FuelTransaction.fecha).label("month"),
+            FuelTransaction.fuel_type,
+            func.sum(FuelTransaction.fuel_liters_real).label("value"),
+        )
+        .where(FuelTransaction.fuel_liters_real.isnot(None))
+        .group_by(
+            extract("year", FuelTransaction.fecha),
+            extract("month", FuelTransaction.fecha),
+            FuelTransaction.fuel_type,
+        )
+        .order_by(
+            extract("year", FuelTransaction.fecha),
+            extract("month", FuelTransaction.fecha),
+        )
+    ).all()
+
+    for row in fuel_rows:
+        key = month_key(int(row.year), int(row.month))
+        if min_key and key < min_key:
+            continue
+        if key not in combined:
+            combined[key] = {
+                "year": int(row.year),
+                "month": int(row.month),
+                "label": month_label(int(row.year), int(row.month)),
+                "energy_values": {},
+                "energy_predictions": {},
+            }
+        code = "fuel_diesel" if row.fuel_type == "D" else "fuel_gasoil"
+        combined[key]["energy_values"][code] = round(_safe_float(row.value), 2)
+
+    prediction_rows = db.execute(
+        select(MLPrediction.scope, MLPrediction.utility, MLPrediction.year, MLPrediction.month, MLPrediction.predicted_value)
+        .where(
+            (MLPrediction.scope == "global")
+            | (MLPrediction.scope.like("resource:%"))
+        )
+        .order_by(MLPrediction.year, MLPrediction.month)
+    ).all()
+
+    for row in prediction_rows:
+        if row.scope == "global" and row.utility not in {"electricity", "water", "fuel_diesel", "fuel_gasoil"}:
+            continue
+        code = str(row.utility)
+        if code not in energy_codes:
+            continue
+        key = month_key(int(row.year), int(row.month))
+        if key not in combined:
+            combined[key] = {
+                "year": int(row.year),
+                "month": int(row.month),
+                "label": month_label(int(row.year), int(row.month)),
+                "energy_values": {},
+                "energy_predictions": {},
+            }
+        combined[key]["energy_predictions"][code] = round(_safe_float(row.predicted_value), 2)
+
+    sorted_keys = sorted(combined.keys())
+    if not sorted_keys:
+        return []
+
+    for code in energy_codes:
+        history: list[tuple[int, int, float]] = []
+        for key in sorted_keys:
+            value = combined[key]["energy_values"].get(code)
+            if value is not None:
+                history.append((combined[key]["year"], combined[key]["month"], _safe_float(value)))
+
+        if not history:
+            continue
+
+        existing_predictions = {
+            (combined[key]["year"], combined[key]["month"])
+            for key in sorted_keys
+            if combined[key]["energy_predictions"].get(code) is not None
+        }
+        for year, month, value in _forecast_from_history(history, horizon=3):
+            if (year, month) in existing_predictions:
+                continue
+            key = month_key(year, month)
+            if key not in combined:
+                combined[key] = {
+                    "year": year,
+                    "month": month,
+                    "label": month_label(year, month),
+                    "energy_values": {},
+                    "energy_predictions": {},
+                }
+            combined[key]["energy_predictions"][code] = round(value, 2)
+
+    sorted_keys = sorted(combined.keys())
+    if len(sorted_keys) > months + 3:
+        sorted_keys = sorted_keys[-(months + 3) :]
+
+    result: list[dict[str, Any]] = []
+    for key in sorted_keys:
+        point = combined[key]
+        values = {code: point["energy_values"].get(code) for code in energy_codes}
+        predictions = {code: point["energy_predictions"].get(code) for code in energy_codes}
+        result.append(
+            {
+                "year": int(point["year"]),
+                "month": int(point["month"]),
+                "label": point["label"],
+                "electricity_kwh": values.get("electricity"),
+                "water_m3": values.get("water"),
+                "predicted_electricity_kwh": predictions.get("electricity"),
+                "predicted_water_m3": predictions.get("water"),
+                "energy_values": values,
+                "energy_predictions": predictions,
+            }
+        )
+    return result
+
+
+def _latest_pair(monthly: list[dict[str, Any]]) -> tuple[dict[str, Any] | None, dict[str, Any] | None]:
+    if not monthly:
+        return None, None
+    latest = monthly[-1]
+    previous = monthly[-2] if len(monthly) > 1 else None
+    return latest, previous
+
+
+def _target_map(db: Session) -> dict[str, float]:
+    targets = db.scalars(select(EfficiencyTarget)).all()
+    return {target.metric_name: float(target.target_value) for target in targets}
+
+
+def _latest_area_breakdown(db: Session, year: int, month: int) -> list[dict[str, Any]]:
+    stmt = (
+        select(
+            AreaDistribution.area_name.label("area_name"),
+            func.avg(AreaDistribution.percentage).label("percentage"),
+            func.sum(MonthlyConsumption.electricity_kwh * AreaDistribution.percentage / 100.0).label("electricity_kwh"),
+            func.sum(MonthlyConsumption.water_m3 * AreaDistribution.percentage / 100.0).label("water_m3"),
+        )
+        .join(MonthlyConsumption, MonthlyConsumption.id == AreaDistribution.monthly_consumption_id)
+        .where(MonthlyConsumption.year == year, MonthlyConsumption.month == month)
+        .group_by(AreaDistribution.area_name)
+        .order_by(func.avg(AreaDistribution.percentage).desc())
+    )
+
+    rows = db.execute(stmt).all()
+    if rows:
+        return [
+            {
+                "area": row.area_name,
+                "percentage": round(_safe_float(row.percentage), 2),
+                "electricity_kwh": round(_safe_float(row.electricity_kwh), 2),
+                "water_m3": round(_safe_float(row.water_m3), 2),
+            }
+            for row in rows
+        ]
+
+    totals_row = db.execute(
+        select(
+            func.sum(MonthlyConsumption.electricity_kwh).label("electricity_kwh"),
+            func.sum(MonthlyConsumption.water_m3).label("water_m3"),
+        ).where(
+            MonthlyConsumption.year == year,
+            MonthlyConsumption.month == month,
+        )
+    ).first()
+    if not totals_row:
+        return []
+
+    total_electricity = _safe_float(totals_row.electricity_kwh)
+    total_water = _safe_float(totals_row.water_m3)
+    if total_electricity <= 0 and total_water <= 0:
+        return []
+
+    fallback_profile = [
+        ("Climatización", 35.0),
+        ("Iluminación", 28.0),
+        ("Maquinaria", 22.0),
+        ("Oficinas", 10.0),
+        ("Otros", 5.0),
+    ]
+    return [
+        {
+            "area": area,
+            "percentage": pct,
+            "electricity_kwh": round(total_electricity * (pct / 100.0), 2),
+            "water_m3": round(total_water * (pct / 100.0), 2),
+        }
+        for area, pct in fallback_profile
+    ]
+
+
+def _build_utility_section(
+    utility_name: str,
+    monthly: list[dict[str, Any]],
+    targets: dict[str, float],
+    area_breakdown: list[dict[str, Any]],
+    prediction_lookup: dict[tuple[int, int], float | None],
+) -> dict[str, Any]:
+    latest, previous = _latest_pair(monthly)
+    if not latest:
+        unit = "kWh" if utility_name == "electricity" else "m³"
+        return {
+            "cards": [
+                {"label": "Consumo Actual", "value": 0.0, "unit": unit, "change_pct": 0.0},
+                {"label": "Costo Mensual", "value": 0.0, "unit": "USD", "change_pct": 0.0},
+                {"label": "Cumplimiento Meta", "value": 0.0, "unit": "%", "change_pct": 0.0},
+            ],
+            "monthly": [],
+            "areas": [],
+        }
+
+    if utility_name == "electricity":
+        consumption_field = "electricity_kwh"
+        cost_field = "electricity_cost_usd"
+        target_value = targets.get("electricity_kwh", latest[consumption_field] * 0.95)
+        area_items = [
+            {
+                "area": item["area"],
+                "consumo": item["electricity_kwh"],
+                "percentage": item["percentage"],
+            }
+            for item in area_breakdown
+        ]
+        unit = "kWh"
+    else:
+        consumption_field = "water_m3"
+        cost_field = "water_cost_usd"
+        target_value = targets.get("water_m3", latest[consumption_field] * 0.95)
+        area_items = [
+            {
+                "area": item["area"],
+                "consumo": item["water_m3"],
+                "percentage": item["percentage"],
+            }
+            for item in area_breakdown
+        ]
+        unit = "m³"
+
+    previous_consumption = previous[consumption_field] if previous else latest[consumption_field]
+    previous_cost = previous[cost_field] if previous else latest[cost_field]
+
+    change_pct = round(_pct_change(latest[consumption_field], previous_consumption), 2)
+    cost_change_pct = round(_pct_change(latest[cost_field], previous_cost), 2)
+    target_progress = 0.0
+    if latest[consumption_field] > 0:
+        target_progress = min(150.0, (target_value / latest[consumption_field]) * 100)
+
+    return {
+        "cards": [
+            {
+                "label": "Consumo Actual",
+                "value": round(latest[consumption_field], 2),
+                "unit": unit,
+                "change_pct": change_pct,
+            },
+            {
+                "label": "Costo Mensual",
+                "value": round(latest[cost_field], 2),
+                "unit": "USD",
+                "change_pct": cost_change_pct,
+            },
+            {
+                "label": "Cumplimiento Meta",
+                "value": round(target_progress, 1),
+                "unit": "%",
+                "change_pct": round(target_value - latest[consumption_field], 2),
+            },
+        ],
+        "monthly": [
+            {
+                "mes": row["label"],
+                "consumo": row[consumption_field],
+                "costo": row[cost_field],
+                "prediccion": prediction_lookup.get((int(row["year"]), int(row["month"]))),
+            }
+            for row in monthly[-12:]
+        ],
+        "areas": area_items,
+    }
+
+
+def _build_metric_cards(efficiency_items: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    cards = []
+    for item in efficiency_items:
+        value = round(_safe_float(item.get("value", 0)), 1)
+        target = round(_safe_float(item.get("target", 0)), 1)
+        cards.append(
+            {
+                "label": item.get("label", "Métrica"),
+                "value": value,
+                "target": target,
+                "status": _status_from_progress(value),
+            }
+        )
+    return cards
+
+
+def _build_kpis(
+    monthly: list[dict[str, Any]],
+    targets: dict[str, float],
+    energy_catalog: list[dict[str, Any]],
+    energy_timeseries: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    latest, previous = _latest_pair(monthly)
+    if not latest or not energy_timeseries:
+        return []
+
+    latest_point, previous_point = _latest_actual_points(energy_timeseries)
+    if not latest_point:
+        return []
+    latest_energy = latest_point.get("energy_values", {})
+    previous_energy = previous_point.get("energy_values", {}) if previous_point else latest_energy
+
+    entries: list[dict[str, Any]] = []
+    for item in energy_catalog:
+        code = item["code"]
+        metric_name = _metric_name_for_energy(energy_catalog, code)
+        current = _safe_float(latest_energy.get(code))
+        previous_value = _safe_float(previous_energy.get(code))
+        if current <= 0 and previous_value <= 0:
+            continue
+
+        target_value = targets.get(metric_name, _default_target_for_energy(energy_catalog, code, current))
+        lower_is_better = _lower_is_better_energy(energy_catalog, code)
+        if lower_is_better:
+            progress = min(150.0, (target_value / max(current, 1.0)) * 100)
+        else:
+            progress = min(150.0, (current / max(target_value, 0.1)) * 100)
+
+        entries.append(
+            {
+                "name": f"{item['label']} mensual",
+                "code": code,
+                "value": round(current, 2),
+                "target": round(target_value, 2),
+                "unit": item["unit"],
+                "progress": round(progress, 2),
+                "trend": _trend(_pct_change(current, max(previous_value, 0.0001))),
+            }
+        )
+
+    electricity_target = targets.get("electricity_kwh", latest["electricity_kwh"] * 0.95)
+    water_target = targets.get("water_m3", latest["water_m3"] * 0.95)
+    co2_target = targets.get("co2_avoided_ton", max(0.1, latest["co2_avoided_ton"] * 0.9))
+    cost_target = (electricity_target + water_target) * 0.8
+
+    entries.extend(
+        [
+            {
+                "name": "Costo Total Mensual",
+                "code": "total_cost",
+                "value": round(latest["total_cost_usd"], 2),
+                "target": round(cost_target, 2),
+                "unit": "USD",
+                "progress": min(150.0, (cost_target / max(latest["total_cost_usd"], 1.0)) * 100),
+                "trend": _trend(_pct_change(latest["total_cost_usd"], previous["total_cost_usd"] if previous else latest["total_cost_usd"])),
+            },
+            {
+                "name": "CO₂ Evitado",
+                "code": "co2_avoided",
+                "value": round(latest["co2_avoided_ton"], 2),
+                "target": round(co2_target, 2),
+                "unit": "Ton",
+                "progress": min(150.0, (latest["co2_avoided_ton"] / max(co2_target, 0.1)) * 100),
+                "trend": _trend(_pct_change(latest["co2_avoided_ton"], previous["co2_avoided_ton"] if previous else latest["co2_avoided_ton"])),
+            },
+        ]
+    )
+
+    for entry in entries:
+        entry["status"] = _status_from_progress(_safe_float(entry["progress"]))
+
+    return entries
+
+
+def _build_map_data(
+    db: Session,
+    year: int,
+    month: int,
+    energy_catalog: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    stmt = (
+        select(
+            Facility.id,
+            Facility.name,
+            Facility.region,
+            func.sum(MonthlyConsumption.electricity_kwh).label("electricity_kwh"),
+            func.sum(MonthlyConsumption.water_m3).label("water_m3"),
+        )
+        .join(MonthlyConsumption, MonthlyConsumption.facility_id == Facility.id)
+        .where(MonthlyConsumption.year == year, MonthlyConsumption.month == month)
+        .group_by(Facility.id, Facility.name, Facility.region)
+        .order_by(func.sum(MonthlyConsumption.electricity_kwh).desc())
+    )
+
+    rows = db.execute(stmt).all()
+    if not rows:
+        return []
+
+    resource_rows = db.execute(
+        select(
+            ResourceMonthlyConsumption.facility_id,
+            ResourceType.code,
+            func.sum(ResourceMonthlyConsumption.consumption_value).label("value"),
+        )
+        .join(ResourceType, ResourceType.id == ResourceMonthlyConsumption.resource_type_id)
+        .where(
+            ResourceMonthlyConsumption.year == year,
+            ResourceMonthlyConsumption.month == month,
+            ResourceType.is_active.is_(True),
+        )
+        .group_by(ResourceMonthlyConsumption.facility_id, ResourceType.code)
+    ).all()
+
+    resource_by_facility: dict[int, dict[str, float]] = {}
+    for row in resource_rows:
+        facility_resources = resource_by_facility.setdefault(int(row.facility_id), {})
+        facility_resources[str(row.code)] = round(_safe_float(row.value), 2)
+
+    combined_totals = []
+    for row in rows:
+        resources = resource_by_facility.get(int(row.id), {})
+        combined_totals.append(
+            _safe_float(row.electricity_kwh)
+            + (_safe_float(row.water_m3) * 2.1)
+            + sum(resources.values())
+        )
+
+    avg_combined = sum(combined_totals) / max(len(combined_totals), 1)
+    avg_electricity = sum(_safe_float(row.electricity_kwh) for row in rows) / len(rows)
+    avg_water = sum(_safe_float(row.water_m3) for row in rows) / len(rows)
+
+    zones = []
+    for index, row in enumerate(rows):
+        elec = _safe_float(row.electricity_kwh)
+        water = _safe_float(row.water_m3)
+        resources = resource_by_facility.get(int(row.id), {})
+        combined = combined_totals[index]
+
+        if combined > avg_combined * 1.15 or elec > avg_electricity * 1.15 or water > avg_water * 1.15:
+            status = "Alto consumo"
+            color = "destructive"
+        elif combined < avg_combined * 0.85 and elec < avg_electricity * 0.9 and water < avg_water * 0.9:
+            status = "Bajo consumo"
+            color = "default"
+        else:
+            status = "Normal"
+            color = "secondary"
+
+        full_resource_map = {
+            item["code"]: round(_safe_float(resources.get(item["code"])), 2)
+            for item in energy_catalog
+            if item["code"] not in {"electricity", "water"}
+        }
+
+        zones.append(
+            {
+                "id": row.id,
+                "name": row.name,
+                "region": row.region,
+                "electricity": round(elec, 2),
+                "water": round(water, 2),
+                "resources": full_resource_map,
+                "status": status,
+                "color": color,
+            }
+        )
+
+    return zones
+
+
+def _build_prediction_section(
+    db: Session,
+    monthly: list[dict[str, Any]],
+    energy_timeseries: list[dict[str, Any]],
+    energy_catalog: list[dict[str, Any]],
+    comparisons: dict[str, Any],
+) -> dict[str, Any]:
+    series_payload = []
+    for item in energy_timeseries:
+        real_values = item.get("energy_values", {})
+        prediction_values = item.get("energy_predictions", {})
+        series_payload.append(
+            {
+                "mes": item["label"],
+                "electricidad_real": real_values.get("electricity"),
+                "agua_real": real_values.get("water"),
+                "electricidad_pred": prediction_values.get("electricity"),
+                "agua_pred": prediction_values.get("water"),
+                "real": real_values,
+                "pred": prediction_values,
+            }
+        )
+
+    latest_ml = db.scalar(
+        select(ActivityLog)
+        .where(ActivityLog.activity_type == "ml")
+        .order_by(ActivityLog.created_at.desc())
+        .limit(1)
+    )
+    ml_meta = latest_ml.extra_data if latest_ml and isinstance(latest_ml.extra_data, dict) else {}
+
+    accuracy_breakdown_raw = ml_meta.get("accuracy_pct", {})
+    if not isinstance(accuracy_breakdown_raw, dict):
+        accuracy_breakdown_raw = {}
+    accuracy_breakdown = {
+        "electricity": round(_safe_float(accuracy_breakdown_raw.get("electricity")), 2),
+        "water": round(_safe_float(accuracy_breakdown_raw.get("water")), 2),
+    }
+
+    champion_models_raw = ml_meta.get("champion_models", {})
+    if not isinstance(champion_models_raw, dict):
+        champion_models_raw = {}
+    champion_models = {
+        "electricity": str(champion_models_raw.get("electricity") or "N/D"),
+        "water": str(champion_models_raw.get("water") or "N/D"),
+    }
+
+    benchmark_raw = ml_meta.get("benchmark", {})
+    if not isinstance(benchmark_raw, dict):
+        benchmark_raw = {}
+
+    electricity_accuracy = accuracy_breakdown["electricity"]
+    water_accuracy = accuracy_breakdown["water"]
+    if electricity_accuracy <= 0 and water_accuracy <= 0:
+        pred_rows = db.execute(
+            select(MLPrediction.utility, MLPrediction.validation_mae)
+            .where(MLPrediction.scope == "global")
+            .order_by(MLPrediction.year, MLPrediction.month)
+        ).all()
+        mae_electricity = 0.0
+        mae_water = 0.0
+        for row in pred_rows:
+            if row.utility == "electricity":
+                mae_electricity = _safe_float(row.validation_mae)
+            if row.utility == "water":
+                mae_water = _safe_float(row.validation_mae)
+        fallback_accuracy = max(0.0, min(99.0, 100.0 - ((mae_electricity + mae_water) / 2.0) / 100.0))
+        accuracy = round(fallback_accuracy, 2)
+        accuracy_breakdown = {"electricity": accuracy, "water": accuracy}
+    else:
+        accuracy = round((electricity_accuracy + water_accuracy) / 2.0, 2)
+
+    summary = comparisons.get("summary", {}) if isinstance(comparisons, dict) else {}
+    projected_savings = _safe_float(summary.get("future_savings_usd"))
+    if projected_savings <= 0:
+        projected_savings = 0.0
+
+    unresolved_anomalies = db.scalar(
+        select(func.count()).select_from(SmartAlert).where(SmartAlert.is_resolved.is_(False))
+    )
+    anomaly_count = int(unresolved_anomalies or 0)
+
+    recommendations = [
+        {
+            "text": "Programar cargas eléctricas y térmicas intensivas fuera de la hora punta y ventanas tarifarias bajas.",
+            "type": "high" if anomaly_count >= 3 else "medium",
+        },
+        {
+            "text": "Aplicar recirculación y control de fugas de agua en líneas con variación mensual superior al 8%.",
+            "type": "medium",
+        },
+        {
+            "text": "Reentrenar semanalmente el benchmark multi-modelo y mantener el modelo campeón por utilidad.",
+            "type": "low",
+        },
+    ]
+
+    return {
+        "accuracy_pct": round(accuracy, 2),
+        "projected_savings_usd": round(projected_savings, 2),
+        "anomaly_count": anomaly_count,
+        "accuracy_breakdown_pct": accuracy_breakdown,
+        "champion_models": champion_models,
+        "benchmark": benchmark_raw,
+        "annual_savings_summary": summary,
+        "energy_catalog": [
+            {"code": item["code"], "label": item["label"], "unit": item["unit"]}
+            for item in energy_catalog
+        ],
+        "series": series_payload,
+        "recommendations": recommendations,
+    }
+
+
+def _build_trends(
+    energy_timeseries: list[dict[str, Any]],
+    energy_catalog: list[dict[str, Any]],
+) -> dict[str, Any]:
+    history = energy_timeseries[-12:]
+    if not history:
+        return {
+            "series": [],
+            "electricity_change_pct": 0.0,
+            "water_change_pct": 0.0,
+            "changes": [],
+            "insights": [],
+        }
+
+    changes: list[dict[str, Any]] = []
+    insights: list[str] = []
+    for item in energy_catalog:
+        code = item["code"]
+        values = [_safe_float(point.get("energy_values", {}).get(code)) for point in history]
+        non_zero = [value for value in values if value > 0]
+        if not non_zero:
+            continue
+
+        first = non_zero[0]
+        last = non_zero[-1]
+        change_pct = _pct_change(last, max(first, 0.0001))
+        changes.append(
+            {
+                "code": code,
+                "label": item["label"],
+                "unit": item["unit"],
+                "change_pct": round(change_pct, 2),
+            }
+        )
+        insights.append(f"{item['label']}: variación de {change_pct:+.1f}% en el período analizado.")
+
+    change_map = {item["code"]: item["change_pct"] for item in changes}
+    return {
+        "series": [
+            {
+                "mes": row["label"],
+                "electricidad": row.get("energy_values", {}).get("electricity"),
+                "agua": row.get("energy_values", {}).get("water"),
+                "energy_values": row.get("energy_values", {}),
+                "energy_predictions": row.get("energy_predictions", {}),
+            }
+            for row in history
+        ],
+        "electricity_change_pct": round(_safe_float(change_map.get("electricity")), 2),
+        "water_change_pct": round(_safe_float(change_map.get("water")), 2),
+        "changes": changes,
+        "insights": insights,
+    }
+
+
+def _build_anomalies(db: Session) -> dict[str, Any]:
+    rows = db.scalars(select(SmartAlert).order_by(SmartAlert.created_at.desc()).limit(40)).all()
+
+    critical_count = len([a for a in rows if (not a.is_resolved) and a.severity == "critical"])
+    warning_count = len([a for a in rows if (not a.is_resolved) and a.severity == "warning"])
+    resolved_count = len([a for a in rows if a.is_resolved])
+
+    items = []
+    for alert in rows:
+        meta = alert.extra_data or {}
+        if isinstance(meta, dict) and "change_pct" in meta:
+            value = f"{_safe_float(meta.get('change_pct')):+.1f}% vs referencia"
+        else:
+            value = alert.description[:80]
+
+        status = "Resuelta" if alert.is_resolved else "Abierta"
+        area = "Sistema"
+        if alert.utility == "electricity":
+            area = "Consumo eléctrico"
+        elif alert.utility == "water":
+            area = "Consumo de agua"
+
+        items.append(
+            {
+                "id": alert.id,
+                "date": alert.created_at.date().isoformat() if alert.created_at else None,
+                "type": alert.title,
+                "area": area,
+                "severity": alert.severity,
+                "value": value,
+                "status": status,
+                "description": alert.description,
+            }
+        )
+
+    return {
+        "critical": critical_count,
+        "warning": warning_count,
+        "resolved": resolved_count,
+        "items": items,
+    }
+
+
+def _build_comparisons(monthly_all: list[dict[str, Any]]) -> dict[str, Any]:
+    if not monthly_all:
+        return {
+            "software_start_year": None,
+            "baseline_years": [],
+            "future_projection_years": [],
+            "summary": {
+                "historical_savings_usd": 0.0,
+                "future_savings_usd": 0.0,
+                "avg_future_savings_pct": 0.0,
+            },
+            "rows": [],
+        }
+
+    annual: dict[int, dict[str, float]] = {}
+    for row in monthly_all:
+        year = int(row["year"])
+        bucket = annual.setdefault(
+            year,
+            {
+                "electricity_kwh": 0.0,
+                "water_m3": 0.0,
+                "electricity_cost_usd": 0.0,
+                "water_cost_usd": 0.0,
+            },
+        )
+        bucket["electricity_kwh"] += _safe_float(row["electricity_kwh"])
+        bucket["water_m3"] += _safe_float(row["water_m3"])
+        bucket["electricity_cost_usd"] += _safe_float(row["electricity_cost_usd"])
+        bucket["water_cost_usd"] += _safe_float(row["water_cost_usd"])
+
+    years = sorted(annual.keys())
+    if not years:
+        return {
+            "software_start_year": None,
+            "baseline_years": [],
+            "future_projection_years": [],
+            "summary": {
+                "historical_savings_usd": 0.0,
+                "future_savings_usd": 0.0,
+                "avg_future_savings_pct": 0.0,
+            },
+            "rows": [],
+        }
+
+    if len(years) >= 6:
+        software_start_index = max(2, int(len(years) * 0.6))
+        software_start_year = years[software_start_index]
+    elif len(years) >= 2:
+        software_start_year = years[-1]
+    else:
+        software_start_year = years[0]
+
+    baseline_years = [year for year in years if year < software_start_year]
+    if not baseline_years:
+        baseline_years = [years[0]]
+
+    def _avg_for(field: str, source_years: list[int]) -> float:
+        values = [_safe_float(annual[year][field]) for year in source_years]
+        return sum(values) / max(len(values), 1)
+
+    baseline_elec = _avg_for("electricity_kwh", baseline_years)
+    baseline_water = _avg_for("water_m3", baseline_years)
+    baseline_elec_cost = _avg_for("electricity_cost_usd", baseline_years)
+    baseline_water_cost = _avg_for("water_cost_usd", baseline_years)
+
+    unit_cost_electricity = baseline_elec_cost / max(baseline_elec, 1.0)
+    unit_cost_water = baseline_water_cost / max(baseline_water, 1.0)
+
+    tail_years = years[-4:] if len(years) >= 4 else years
+
+    def _avg_delta(field: str) -> float:
+        values = [_safe_float(annual[year][field]) for year in tail_years]
+        if len(values) < 2:
+            return 0.0
+        diffs = [values[idx] - values[idx - 1] for idx in range(1, len(values))]
+        return sum(diffs) / len(diffs)
+
+    delta_elec = _avg_delta("electricity_kwh")
+    delta_water = _avg_delta("water_m3")
+
+    latest_year = years[-1]
+    latest_elec = _safe_float(annual[latest_year]["electricity_kwh"])
+    latest_water = _safe_float(annual[latest_year]["water_m3"])
+
+    projection_years = [latest_year + 1, latest_year + 2, latest_year + 3]
+    evaluation_years = years + projection_years
+
+    rows: list[dict[str, Any]] = []
+    historical_savings_usd = 0.0
+    future_savings_usd = 0.0
+    future_savings_pct_values: list[float] = []
+
+    for year in evaluation_years:
+        future_step = max(0, year - latest_year)
+        has_actual = year in annual
+        scenario_type = "historical" if has_actual else "predictive"
+
+        if has_actual:
+            elec_with = _safe_float(annual[year]["electricity_kwh"])
+            water_with = _safe_float(annual[year]["water_m3"])
+            elec_cost_with = _safe_float(annual[year]["electricity_cost_usd"])
+            water_cost_with = _safe_float(annual[year]["water_cost_usd"])
+        else:
+            projected_elec = max(0.0, latest_elec + (delta_elec * future_step * 0.9))
+            projected_water = max(0.0, latest_water + (delta_water * future_step * 0.9))
+
+            # Simulación de optimización acumulada aplicada por el software.
+            elec_gain = min(0.12, 0.06 + (future_step - 1) * 0.02)
+            water_gain = min(0.11, 0.05 + (future_step - 1) * 0.02)
+
+            elec_with = projected_elec * (1.0 - elec_gain)
+            water_with = projected_water * (1.0 - water_gain)
+            inflation = 1.0 + 0.015 * future_step
+            elec_cost_with = elec_with * unit_cost_electricity * inflation
+            water_cost_with = water_with * unit_cost_water * inflation
+
+        if year < software_start_year:
+            elec_without = elec_with
+            water_without = water_with
+            elec_cost_without = elec_cost_with
+            water_cost_without = water_cost_with
+        else:
+            if has_actual:
+                years_after_start = max(1, year - software_start_year + 1)
+                elec_penalty = min(0.18, 0.10 + (years_after_start - 1) * 0.015)
+                water_penalty = min(0.16, 0.08 + (years_after_start - 1) * 0.012)
+            else:
+                elec_penalty = min(0.22, 0.14 + (future_step - 1) * 0.02)
+                water_penalty = min(0.20, 0.12 + (future_step - 1) * 0.02)
+
+            elec_without = elec_with * (1.0 + elec_penalty)
+            water_without = water_with * (1.0 + water_penalty)
+            elec_cost_without = elec_cost_with * (1.0 + elec_penalty)
+            water_cost_without = water_cost_with * (1.0 + water_penalty)
+
+        total_without = elec_cost_without + water_cost_without
+        total_with = elec_cost_with + water_cost_with
+        savings_usd = max(0.0, total_without - total_with)
+        savings_pct = (savings_usd / max(total_without, 1.0)) * 100.0
+
+        if scenario_type == "historical" and year >= software_start_year:
+            historical_savings_usd += savings_usd
+        if scenario_type == "predictive":
+            future_savings_usd += savings_usd
+            future_savings_pct_values.append(savings_pct)
+
+        rows.append(
+            {
+                "year": year,
+                "periodo": str(year),
+                "scenario_type": scenario_type,
+                "software_enabled": year >= software_start_year,
+                "electricity_kwh_without_software": round(elec_without, 2),
+                "electricity_kwh_with_software": round(elec_with, 2),
+                "water_m3_without_software": round(water_without, 2),
+                "water_m3_with_software": round(water_with, 2),
+                "electricity_cost_without_software_usd": round(elec_cost_without, 2),
+                "electricity_cost_with_software_usd": round(elec_cost_with, 2),
+                "water_cost_without_software_usd": round(water_cost_without, 2),
+                "water_cost_with_software_usd": round(water_cost_with, 2),
+                "total_cost_without_software_usd": round(total_without, 2),
+                "total_cost_with_software_usd": round(total_with, 2),
+                "projected_savings_usd": round(savings_usd, 2),
+                "projected_savings_pct": round(savings_pct, 2),
+            }
+        )
+
+    avg_future_savings_pct = (
+        sum(future_savings_pct_values) / len(future_savings_pct_values)
+        if future_savings_pct_values
+        else 0.0
+    )
+
+    return {
+        "software_start_year": software_start_year,
+        "baseline_years": baseline_years,
+        "future_projection_years": projection_years,
+        "summary": {
+            "historical_savings_usd": round(historical_savings_usd, 2),
+            "future_savings_usd": round(future_savings_usd, 2),
+            "avg_future_savings_pct": round(avg_future_savings_pct, 2),
+        },
+        "rows": rows[-10:],
+    }
+
+
+def _build_goals(
+    db: Session,
+    monthly: list[dict[str, Any]],
+    energy_catalog: list[dict[str, Any]],
+    energy_timeseries: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    latest, _ = _latest_pair(monthly)
+    latest_map = {
+        "electricity_kwh": _safe_float(latest["electricity_kwh"]) if latest else 0.0,
+        "water_m3": _safe_float(latest["water_m3"]) if latest else 0.0,
+        "co2_avoided_ton": _safe_float(latest["co2_avoided_ton"]) if latest else 0.0,
+        "total_cost_usd": _safe_float(latest["total_cost_usd"]) if latest else 0.0,
+    }
+    latest_energy_point, _ = _latest_actual_points(energy_timeseries)
+    latest_energy_values = latest_energy_point.get("energy_values", {}) if latest_energy_point else {}
+
+    goals: list[dict[str, Any]] = []
+    explicit_metrics: set[str] = set()
+
+    targets = db.scalars(select(EfficiencyTarget).order_by(EfficiencyTarget.created_at.desc())).all()
+    for target in targets:
+        explicit_metrics.add(target.metric_name)
+        current = latest_map.get(target.metric_name, 0.0)
+        if current <= 0:
+            for item in energy_catalog:
+                metric_name = _metric_name_for_energy(energy_catalog, item["code"])
+                if metric_name == target.metric_name:
+                    current = _safe_float(latest_energy_values.get(item["code"]))
+                    break
+
+        lower_is_better = target.metric_name in {"electricity_kwh", "water_m3", "total_cost_usd"}
+        if target.metric_name == "energia_renovable":
+            lower_is_better = False
+
+        if lower_is_better:
+            progress = min(150.0, (target.target_value / max(current, 1.0)) * 100)
+        else:
+            progress = min(150.0, (current / max(target.target_value, 0.1)) * 100)
+
+        status = "Completado" if progress >= 100 else "En progreso" if progress >= 75 else "En riesgo"
+
+        goals.append(
+            {
+                "id": target.id,
+                "name": target.metric_name,
+                "target": round(_safe_float(target.target_value), 2),
+                "current": round(current, 2),
+                "unit": target.unit,
+                "progress": round(progress, 1),
+                "deadline": target.end_date.isoformat() if target.end_date else None,
+                "status": status,
+            }
+        )
+
+    for item in energy_catalog:
+        code = item["code"]
+        metric_name = _metric_name_for_energy(energy_catalog, code)
+        if metric_name in explicit_metrics:
+            continue
+        current = _safe_float(latest_energy_values.get(code))
+        if current <= 0:
+            continue
+
+        lower_is_better = _lower_is_better_energy(energy_catalog, code)
+        target_value = _default_target_for_energy(energy_catalog, code, current)
+        if target_value <= 0:
+            continue
+
+        if lower_is_better:
+            progress = min(150.0, (target_value / max(current, 1.0)) * 100)
+        else:
+            progress = min(150.0, (current / max(target_value, 0.1)) * 100)
+        status = "Completado" if progress >= 100 else "En progreso" if progress >= 75 else "En riesgo"
+        goals.append(
+            {
+                "id": f"auto-{code}",
+                "name": item["label"],
+                "target": round(target_value, 2),
+                "current": round(current, 2),
+                "unit": item["unit"],
+                "progress": round(progress, 1),
+                "deadline": None,
+                "status": status,
+            }
+        )
+
+    custom_metrics = db.scalars(select(CustomMetric).order_by(CustomMetric.created_at.desc()).limit(10)).all()
+    for metric in custom_metrics:
+        progress = min(150.0, (_safe_float(metric.target_value) / max(_safe_float(metric.current_value), 1.0)) * 100)
+        status = "Completado" if progress >= 100 else "En progreso" if progress >= 75 else "En riesgo"
+        goals.append(
+            {
+                "id": f"custom-{metric.id}",
+                "name": metric.name,
+                "target": round(_safe_float(metric.target_value), 2),
+                "current": round(_safe_float(metric.current_value), 2),
+                "unit": metric.unit,
+                "progress": round(progress, 1),
+                "deadline": None,
+                "status": status,
+            }
+        )
+
+    return goals
+
+
+def _build_uploads(db: Session) -> list[dict[str, Any]]:
+    rows = db.scalars(select(ETLJob).order_by(ETLJob.finished_at.desc()).limit(10)).all()
+    return [
+        {
+            "id": row.id,
+            "name": row.source_filename,
+            "date": row.finished_at.date().isoformat() if row.finished_at else None,
+            "rows_processed": row.rows_processed,
+            "rows_rejected": row.rows_rejected,
+            "status": row.status,
+        }
+        for row in rows
+    ]
+
+
+def _build_reports(monthly: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    payload = []
+    for idx, row in enumerate(reversed(monthly[-12:]), start=1):
+        estimated_size_mb = max(0.2, (row["electricity_kwh"] + row["water_m3"]) / 15000)
+        payload.append(
+            {
+                "id": idx,
+                "name": f"Reporte Mensual - {row['label']}",
+                "type": "PDF",
+                "date": f"{row['year']}-{int(row['month']):02d}-01",
+                "size": f"{estimated_size_mb:.1f} MB",
+                "month_label": row["label"],
+                "total_cost_usd": row["total_cost_usd"],
+            }
+        )
+    return payload
+
+
+def _build_database_status(db: Session) -> dict[str, Any]:
+    tables: list[dict[str, Any]] = []
+    storage_mb = 0.0
+
+    try:
+        storage_bytes = db.execute(text("SELECT pg_database_size(current_database())")).scalar_one()
+        storage_mb = round(_safe_float(storage_bytes) / (1024 * 1024), 2)
+
+        rows = db.execute(
+            text(
+                """
+                SELECT
+                    s.relname AS table_name,
+                    COALESCE(s.n_live_tup, 0) AS row_count,
+                    pg_total_relation_size(s.relid) AS size_bytes
+                FROM pg_stat_user_tables s
+                ORDER BY pg_total_relation_size(s.relid) DESC
+                LIMIT 20
+                """
+            )
+        ).all()
+
+        for row in rows:
+            size_mb = round(_safe_float(row.size_bytes) / (1024 * 1024), 2)
+            tables.append(
+                {
+                    "name": row.table_name,
+                    "rows": int(_safe_float(row.row_count)),
+                    "size": f"{size_mb} MB",
+                    "status": "active",
+                }
+            )
+    except Exception:
+        model_counts = [
+            ("monthly_consumptions", db.scalar(select(func.count()).select_from(MonthlyConsumption)) or 0),
+            ("ml_predictions", db.scalar(select(func.count()).select_from(MLPrediction)) or 0),
+            ("smart_alerts", db.scalar(select(func.count()).select_from(SmartAlert)) or 0),
+            ("app_users", db.scalar(select(func.count()).select_from(User)) or 0),
+            ("etl_jobs", db.scalar(select(func.count()).select_from(ETLJob)) or 0),
+        ]
+        for name, count in model_counts:
+            tables.append(
+                {
+                    "name": name,
+                    "rows": int(count),
+                    "size": "N/D",
+                    "status": "active",
+                }
+            )
+
+    return {
+        "storage_mb": storage_mb,
+        "tables_active": len(tables),
+        "uptime_pct": 99.9,
+        "tables": tables,
+    }
+
+
+def _next_etl_run(cron_expression: str, now: datetime) -> datetime:
+    parts = cron_expression.split()
+    if len(parts) != 5:
+        return now + timedelta(days=1)
+
+    minute_s, hour_s, day_s, month_s, weekday_s = parts
+    if not (minute_s.isdigit() and hour_s.isdigit()):
+        return now + timedelta(days=1)
+
+    minute = int(minute_s)
+    hour = int(hour_s)
+
+    if day_s.isdigit() and month_s == "*" and weekday_s == "*":
+        day = int(day_s)
+        current_last_day = monthrange(now.year, now.month)[1]
+        candidate = now.replace(
+            day=min(day, current_last_day),
+            hour=hour,
+            minute=minute,
+            second=0,
+            microsecond=0,
+        )
+        if candidate <= now:
+            year = now.year + 1 if now.month == 12 else now.year
+            month = 1 if now.month == 12 else now.month + 1
+            next_last_day = monthrange(year, month)[1]
+            candidate = candidate.replace(year=year, month=month, day=min(day, next_last_day))
+        return candidate
+
+    if day_s == "*" and month_s == "*" and weekday_s == "*":
+        candidate = now.replace(hour=hour, minute=minute, second=0, microsecond=0)
+        if candidate <= now:
+            candidate += timedelta(days=1)
+        return candidate
+
+    return now + timedelta(days=1)
+
+
+def _build_calendar(db: Session, goals: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    now = datetime.now(timezone.utc)
+    events: list[dict[str, Any]] = []
+
+    schedule = db.get(ETLSchedule, 1)
+    cron_expression = schedule.cron_expression if schedule else "0 6 1 * *"
+    next_run = _next_etl_run(cron_expression, now)
+    events.append(
+        {
+            "id": "etl-next",
+            "date": next_run.date().isoformat(),
+            "title": "Próxima ejecución ETL",
+            "type": "ETL",
+        }
+    )
+
+    report_due = (now + timedelta(days=15)).date().isoformat()
+    events.append(
+        {
+            "id": "monthly-report",
+            "date": report_due,
+            "title": "Revisión de reporte mensual",
+            "type": "Reporte",
+        }
+    )
+
+    open_alerts = db.scalars(
+        select(SmartAlert)
+        .where(SmartAlert.is_resolved.is_(False))
+        .order_by(SmartAlert.created_at.desc())
+        .limit(6)
+    ).all()
+    for alert in open_alerts:
+        event_date = (alert.created_at + timedelta(days=1)).date().isoformat() if alert.created_at else now.date().isoformat()
+        events.append(
+            {
+                "id": f"alert-{alert.id}",
+                "date": event_date,
+                "title": f"Seguimiento alerta: {alert.title}",
+                "type": "Alerta",
+            }
+        )
+
+    for goal in goals:
+        if goal.get("deadline"):
+            events.append(
+                {
+                    "id": f"goal-{goal['id']}",
+                    "date": goal["deadline"],
+                    "title": f"Meta: {goal['name']}",
+                    "type": "Objetivo",
+                }
+            )
+
+    events.sort(key=lambda event: event["date"])
+    return events[:12]
+
+
+def _build_alerts_center(db: Session) -> dict[str, Any]:
+    alerts = db.scalars(select(SmartAlert).order_by(SmartAlert.created_at.desc()).limit(40)).all()
+    unread_count = len([alert for alert in alerts if not alert.is_resolved])
+
+    items = [
+        {
+            "id": alert.id,
+            "title": alert.title,
+            "desc": alert.description,
+            "severity": alert.severity,
+            "date": alert.created_at.isoformat() if alert.created_at else None,
+            "read": bool(alert.is_resolved),
+            "utility": alert.utility,
+        }
+        for alert in alerts
+    ]
+
+    return {
+        "unread_count": unread_count,
+        "items": items,
+    }
+
+
+def _build_users(db: Session) -> list[dict[str, Any]]:
+    users = db.scalars(select(User).order_by(User.created_at.desc()).limit(100)).all()
+    return [
+        {
+            "id": user.id,
+            "name": user.full_name,
+            "email": user.email,
+            "role": user.role,
+            "status": "Activo" if user.status == "ACTIVE" else "Inactivo",
+            "email_verified": user.email_verified,
+            "last_login_at": user.last_login_at.isoformat() if user.last_login_at else None,
+            "created_at": user.created_at.isoformat() if user.created_at else None,
+            "initials": "".join([piece[0] for piece in (user.full_name or "U").split()[:2]]).upper(),
+        }
+        for user in users
+    ]
+
+
+def _build_company(db: Session, database_status: dict[str, Any]) -> dict[str, Any]:
+    company = db.scalar(select(Company).order_by(Company.id.asc()))
+    users_count = db.scalar(select(func.count()).select_from(User).where(User.status == "ACTIVE")) or 0
+
+    facilities_count = 0
+    if company:
+        facilities_count = db.scalar(select(func.count()).select_from(Facility).where(Facility.company_id == company.id)) or 0
+
+    company_name = company.name if company else "Organización"
+    industry = company.industry if company else "No definida"
+
+    return {
+        "name": company_name,
+        "industry": industry,
+        "employees": int(users_count),
+        "facilities": int(facilities_count),
+        "website": None,
+        "plan": "Enterprise",
+        "license_until": "2026-12-31",
+        "storage": f"{database_status['storage_mb']} MB",
+    }
+
+
+def _build_settings(db: Session) -> dict[str, Any]:
+    cfg = get_or_create_alert_config(db)
+    schedule = db.get(ETLSchedule, 1)
+    if not schedule:
+        schedule = ETLSchedule(id=1, cron_expression="0 6 1 * *", enabled=True)
+        db.add(schedule)
+        db.flush()
+
+    return {
+        "notify_email": bool(cfg.notify_email),
+        "notify_in_app": bool(cfg.notify_in_app),
+        "electricity_threshold_pct": round(_safe_float(cfg.electricity_threshold_pct), 2),
+        "water_threshold_pct": round(_safe_float(cfg.water_threshold_pct), 2),
+        "volatility_threshold_pct": round(_safe_float(cfg.volatility_threshold_pct), 2),
+        "etl_enabled": bool(schedule.enabled),
+        "etl_cron_expression": schedule.cron_expression,
+    }
+
+
+def _build_security(db: Session) -> dict[str, Any]:
+    users = db.scalars(select(User).order_by(User.last_login_at.desc().nullslast(), User.created_at.desc()).limit(8)).all()
+    sessions = []
+    for index, user in enumerate(users):
+        date_value = user.last_login_at or user.created_at
+        sessions.append(
+            {
+                "device": f"Sesión {user.email}",
+                "ip": "N/D",
+                "date": date_value.isoformat() if date_value else None,
+                "current": index == 0,
+            }
+        )
+
+    logs = db.scalars(select(ActivityLog).order_by(ActivityLog.created_at.desc()).limit(20)).all()
+    audit = [
+        {
+            "action": log.message,
+            "user": "sistema",
+            "date": log.created_at.isoformat() if log.created_at else None,
+        }
+        for log in logs
+    ]
+
+    return {
+        "sessions": sessions,
+        "audit": audit,
+    }
+
+
+def _latest_actual_points(energy_timeseries: list[dict[str, Any]]) -> tuple[dict[str, Any] | None, dict[str, Any] | None]:
+    actual_points = [
+        point
+        for point in energy_timeseries
+        if any(value is not None for value in point.get("energy_values", {}).values())
+    ]
+    if not actual_points:
+        return None, None
+    latest = actual_points[-1]
+    previous = actual_points[-2] if len(actual_points) > 1 else latest
+    return latest, previous
+
+
+def _build_summary(
+    db: Session,
+    monthly: list[dict[str, Any]],
+    energy_catalog: list[dict[str, Any]],
+    energy_timeseries: list[dict[str, Any]],
+) -> dict[str, Any]:
+    latest, previous = _latest_pair(monthly)
+    latest_energy, previous_energy = _latest_actual_points(energy_timeseries)
+
+    if not latest or not latest_energy:
+        return {
+            "latest_month_label": "Sin datos",
+            "metrics": [],
+            "open_alerts": int(
+                db.scalar(select(func.count()).select_from(SmartAlert).where(SmartAlert.is_resolved.is_(False)))
+                or 0
+            ),
+        }
+
+    metrics = []
+    latest_values = latest_energy.get("energy_values", {})
+    previous_values = previous_energy.get("energy_values", {}) if previous_energy else latest_values
+    for item in energy_catalog:
+        code = item["code"]
+        current = _safe_float(latest_values.get(code))
+        if current <= 0:
+            continue
+        prev = _safe_float(previous_values.get(code))
+        metrics.append(
+            {
+                "title": item["label"],
+                "value": round(current, 2),
+                "unit": item["unit"],
+                "change_pct": round(_pct_change(current, max(prev, 0.0001)), 2),
+            }
+        )
+
+    prev_cost = _safe_float(previous["total_cost_usd"]) if previous else _safe_float(latest["total_cost_usd"])
+    prev_co2 = _safe_float(previous["co2_avoided_ton"]) if previous else _safe_float(latest["co2_avoided_ton"])
+    metrics.extend(
+        [
+            {
+                "title": "Costo Total",
+                "value": round(_safe_float(latest["total_cost_usd"]), 2),
+                "unit": "USD",
+                "change_pct": round(_pct_change(_safe_float(latest["total_cost_usd"]), max(prev_cost, 0.0001)), 2),
+            },
+            {
+                "title": "CO₂ Evitado",
+                "value": round(_safe_float(latest["co2_avoided_ton"]), 2),
+                "unit": "Ton",
+                "change_pct": round(_pct_change(_safe_float(latest["co2_avoided_ton"]), max(prev_co2, 0.0001)), 2),
+            },
+        ]
+    )
+
+    open_alerts = db.scalar(select(func.count()).select_from(SmartAlert).where(SmartAlert.is_resolved.is_(False))) or 0
+    return {
+        "latest_month_label": latest["label"],
+        "metrics": metrics,
+        "open_alerts": int(open_alerts),
+    }
+
+
+def get_operations_overview(db: Session, months: int = 12) -> dict[str, Any]:
+    monthly = _monthly_aggregates(db, months=months)
+    monthly_all = _monthly_aggregates(db, months=None)
+    energy_catalog = _energy_catalog(db)
+    energy_timeseries = _build_energy_timeseries(
+        db,
+        monthly=monthly,
+        energy_catalog=energy_catalog,
+        months=months,
+    )
+
+    latest, _ = _latest_pair(monthly)
+    latest_year = int(latest["year"]) if latest else datetime.now(timezone.utc).year
+    latest_month = int(latest["month"]) if latest else datetime.now(timezone.utc).month
+
+    area_breakdown = _latest_area_breakdown(db, latest_year, latest_month) if latest else []
+    targets = _target_map(db)
+
+    efficiency = get_efficiency(db)
+
+    electricity_prediction_lookup = {
+        (int(point["year"]), int(point["month"])): point.get("energy_predictions", {}).get("electricity")
+        for point in energy_timeseries
+    }
+    water_prediction_lookup = {
+        (int(point["year"]), int(point["month"])): point.get("energy_predictions", {}).get("water")
+        for point in energy_timeseries
+    }
+
+    electricity = _build_utility_section("electricity", monthly, targets, area_breakdown, electricity_prediction_lookup)
+    water = _build_utility_section("water", monthly, targets, area_breakdown, water_prediction_lookup)
+    metrics = _build_metric_cards([item.model_dump() for item in efficiency.items])
+    kpis = _build_kpis(monthly, targets, energy_catalog, energy_timeseries)
+    map_data = _build_map_data(db, latest_year, latest_month, energy_catalog) if latest else []
+    comparisons = _build_comparisons(monthly_all)
+    predictions = _build_prediction_section(db, monthly, energy_timeseries, energy_catalog, comparisons)
+    trends = _build_trends(energy_timeseries, energy_catalog)
+    anomalies = _build_anomalies(db)
+    goals = _build_goals(db, monthly, energy_catalog, energy_timeseries)
+    uploads = _build_uploads(db)
+    reports = _build_reports(monthly)
+    database_status = _build_database_status(db)
+    calendar_events = _build_calendar(db, goals)
+    alerts_center = _build_alerts_center(db)
+    users = _build_users(db)
+    company = _build_company(db, database_status)
+    settings = _build_settings(db)
+    security = _build_security(db)
+
+    return {
+        "generated_at": datetime.now(timezone.utc).isoformat(),
+        "summary": _build_summary(db, monthly, energy_catalog, energy_timeseries),
+        "energy_catalog": energy_catalog,
+        "distribution": [item.model_dump() for item in get_distribution(db)],
+        "timeseries": energy_timeseries,
+        "efficiency": efficiency.model_dump(),
+        "electricity": electricity,
+        "water": water,
+        "metrics": metrics,
+        "kpis": kpis,
+        "map": map_data,
+        "predictions": predictions,
+        "trends": trends,
+        "anomalies": anomalies,
+        "comparisons": comparisons,
+        "goals": goals,
+        "uploads": uploads,
+        "reports": reports,
+        "exports": [
+            {
+                "id": "consumption",
+                "title": "Datos de Consumo",
+                "desc": "Exportación consolidada de energía, agua y recursos fiscalizados",
+                "formats": ["CSV", "JSON"],
+            },
+            {
+                "id": "predictions",
+                "title": "Predicciones ML",
+                "desc": "Predicciones generadas por modelo activo",
+                "formats": ["CSV", "JSON"],
+            },
+            {
+                "id": "alerts",
+                "title": "Alertas",
+                "desc": "Histórico de alertas y anomalías",
+                "formats": ["CSV"],
+            },
+        ],
+        "database": database_status,
+        "calendar": calendar_events,
+        "alerts_center": alerts_center,
+        "users": users,
+        "company": company,
+        "settings": settings,
+        "security": security,
+    }
+
+
+def resolve_alert(db: Session, alert_id: int) -> dict[str, Any]:
+    alert = db.get(SmartAlert, alert_id)
+    if not alert:
+        raise ValueError("Alerta no encontrada")
+
+    alert.is_resolved = True
+    log_activity(
+        db,
+        activity_type="alert_resolved",
+        message=f"Alerta resuelta: {alert.title}",
+        metadata={"alert_id": alert.id},
+    )
+    db.flush()
+
+    return {
+        "id": alert.id,
+        "resolved": True,
+        "title": alert.title,
+    }
+
+
+def resolve_all_alerts(db: Session) -> dict[str, Any]:
+    open_alerts = db.scalars(select(SmartAlert).where(SmartAlert.is_resolved.is_(False))).all()
+    for alert in open_alerts:
+        alert.is_resolved = True
+
+    log_activity(
+        db,
+        activity_type="alert_resolved",
+        message="Todas las alertas fueron marcadas como resueltas",
+        metadata={"count": len(open_alerts)},
+    )
+    db.flush()
+
+    return {
+        "resolved": len(open_alerts),
+    }
+
+
+def create_user(
+    db: Session,
+    *,
+    full_name: str,
+    email: str,
+    password: str | None,
+    role: str,
+    status: str,
+    email_verified: bool,
+) -> dict[str, Any]:
+    normalized_email = email.lower().strip()
+    existing = db.scalar(select(User).where(User.email == normalized_email))
+    if existing:
+        raise ValueError("Ya existe un usuario con ese correo")
+
+    temporary_password = password
+    generated_password = False
+    if not temporary_password:
+        temporary_password = f"Tmp-{token_urlsafe(8)}"
+        generated_password = True
+
+    user = User(
+        email=normalized_email,
+        full_name=full_name.strip(),
+        password_hash=hash_password(temporary_password),
+        email_verified=email_verified,
+        status=status,
+        role=role,
+        must_change_password=generated_password,
+        is_active=status == "ACTIVE",
+    )
+    db.add(user)
+    db.flush()
+
+    log_activity(
+        db,
+        activity_type="user",
+        message=f"Usuario creado: {normalized_email}",
+        metadata={"user_id": user.id, "role": role, "status": status},
+    )
+
+    return {
+        "id": user.id,
+        "email": user.email,
+        "full_name": user.full_name,
+        "role": user.role,
+        "status": user.status,
+        "email_verified": user.email_verified,
+        "temporary_password": temporary_password if generated_password else None,
+        "created_at": user.created_at.isoformat() if user.created_at else None,
+    }
+
+
+def update_settings(db: Session, payload: dict[str, Any]) -> dict[str, Any]:
+    cfg = get_or_create_alert_config(db)
+    schedule = db.get(ETLSchedule, 1)
+    if not schedule:
+        schedule = ETLSchedule(id=1, cron_expression="0 6 1 * *", enabled=True)
+        db.add(schedule)
+
+    thresholds_changed = False
+    if payload.get("notify_email") is not None:
+        cfg.notify_email = bool(payload["notify_email"])
+    if payload.get("notify_in_app") is not None:
+        cfg.notify_in_app = bool(payload["notify_in_app"])
+    if payload.get("electricity_threshold_pct") is not None:
+        cfg.electricity_threshold_pct = float(payload["electricity_threshold_pct"])
+        thresholds_changed = True
+    if payload.get("water_threshold_pct") is not None:
+        cfg.water_threshold_pct = float(payload["water_threshold_pct"])
+        thresholds_changed = True
+    if payload.get("volatility_threshold_pct") is not None:
+        cfg.volatility_threshold_pct = float(payload["volatility_threshold_pct"])
+        thresholds_changed = True
+
+    if thresholds_changed:
+        regenerate_anomaly_alerts(db)
+
+    if payload.get("etl_enabled") is not None:
+        schedule.enabled = bool(payload["etl_enabled"])
+    if payload.get("etl_cron_expression"):
+        schedule.cron_expression = str(payload["etl_cron_expression"])
+
+    log_activity(
+        db,
+        activity_type="settings",
+        message="Configuración de la plataforma actualizada",
+        metadata={
+            "notify_email": cfg.notify_email,
+            "notify_in_app": cfg.notify_in_app,
+            "etl_enabled": schedule.enabled,
+            "etl_cron_expression": schedule.cron_expression,
+        },
+    )
+
+    db.flush()
+
+    return {
+        "notify_email": cfg.notify_email,
+        "notify_in_app": cfg.notify_in_app,
+        "electricity_threshold_pct": cfg.electricity_threshold_pct,
+        "water_threshold_pct": cfg.water_threshold_pct,
+        "volatility_threshold_pct": cfg.volatility_threshold_pct,
+        "etl_enabled": schedule.enabled,
+        "etl_cron_expression": schedule.cron_expression,
+    }

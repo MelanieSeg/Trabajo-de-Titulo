@@ -1,0 +1,7 @@
+company_name,facility_name,region,year,month,electricity_kwh,water_m3,electricity_cost_usd,water_cost_usd,co2_avoided_ton,lighting_pct,hvac_pct,machinery_pct,offices_pct,others_pct
+Green Glow Industries,Planta Norte,Santiago,2026,10,2700,1120,6200,1500,0.66,27,36,22,10,5
+Green Glow Industries,Planta Sur,Valparaiso,2026,10,2480,1000,5710,1340,0.60,28,35,23,9,5
+Green Glow Industries,Planta Norte,Santiago,2026,11,3380,1680,7900,2290,0.48,24,42,20,8,6
+Green Glow Industries,Planta Sur,Valparaiso,2026,11,3090,1490,7210,2030,0.44,25,41,21,8,5
+Green Glow Industries,Planta Norte,Santiago,2026,12,2890,1240,6720,1660,0.62,27,37,21,10,5
+Green Glow Industries,Planta Sur,Valparaiso,2026,12,2660,1120,6180,1490,0.56,28,36,22,9,5
