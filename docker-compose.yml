@@ -1,0 +1,95 @@
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: ecoenergy-db
+    restart: unless-stopped
+    env_file:
+      - ./db/credentials.env
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./db/init.sql:/docker-entrypoint-initdb.d/00_init.sql:ro
+    ports:
+      - "${POSTGRES_PORT:-5437}:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  db-init:
+    image: postgres:16-alpine
+    container_name: ecoenergy-db-init
+    restart: "no"
+    env_file:
+      - ./db/credentials.env
+    depends_on:
+      db:
+        condition: service_healthy
+    volumes:
+      - ./db/init.sql:/init.sql:ro
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - >-
+        psql "postgresql://$$POSTGRES_USER:$$POSTGRES_PASSWORD@db:5432/$$POSTGRES_DB"
+        -v ON_ERROR_STOP=1
+        -f /init.sql
+
+  backend:
+    build:
+      context: ./backend
+    container_name: ecoenergy-backend
+    restart: unless-stopped
+    env_file:
+      - ./db/credentials.env
+    environment:
+      # SECRET_KEY: define esta variable en un .env raíz o como variable de entorno del host.
+      # El fallback es funcional para desarrollo local, NUNCA usar en producción.
+      # Generar clave segura: python -c "import secrets; print(secrets.token_hex(32))"
+      SECRET_KEY: ${SECRET_KEY:-ecoenergy_dev_only_insecure_key_change_before_production}
+      JWT_ALGORITHM: ${JWT_ALGORITHM:-HS256}
+      JWT_EXPIRATION_HOURS: ${JWT_EXPIRATION_HOURS:-24}
+      JWT_ISSUER: ${JWT_ISSUER:-eco-energy-api}
+      JWT_AUDIENCE: ${JWT_AUDIENCE:-eco-energy-app}
+      RESET_PASSWORD_TOKEN_EXPIRE_HOURS: ${RESET_PASSWORD_TOKEN_EXPIRE_HOURS:-1}
+      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:8086,http://127.0.0.1:8086,https://localhost:8086,https://127.0.0.1:8086}
+      ETL_UPLOAD_DIR: ${ETL_UPLOAD_DIR:-/app/data/uploads}
+      SAMPLE_CSV_PATH: ${SAMPLE_CSV_PATH:-/app/data/raw/sample_consumption.csv}
+      ETL_MAX_UPLOAD_MB: ${ETL_MAX_UPLOAD_MB:-100}
+      PLATFORM_CONFIG_PATH: ${PLATFORM_CONFIG_PATH:-/opt/ecoenergy/app/platform-config.json}
+      RATE_LIMIT_TRUSTED_PROXIES: "${RATE_LIMIT_TRUSTED_PROXIES:-127.0.0.1/32,::1/128,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16}"
+      LOGIN_RATE_LIMIT: "${LOGIN_RATE_LIMIT:-20/15minutes}"
+      REGISTER_RATE_LIMIT: "${REGISTER_RATE_LIMIT:-3/hour}"
+      FORGOT_PASSWORD_RATE_LIMIT: "${FORGOT_PASSWORD_RATE_LIMIT:-3/hour}"
+      RESET_PASSWORD_RATE_LIMIT: "${RESET_PASSWORD_RATE_LIMIT:-5/hour}"
+    depends_on:
+      db:
+        condition: service_healthy
+      db-init:
+        condition: service_completed_successfully
+    volumes:
+      - backend_uploads:/app/data/uploads
+      - ./app:/opt/ecoenergy/app:ro
+    ports:
+      - "${BACKEND_PORT:-8005}:8000"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/health')"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+
+  frontend:
+    build:
+      context: ./frontend
+      args:
+        VITE_API_BASE_URL: ${VITE_API_BASE_URL:-/api}
+    container_name: ecoenergy-frontend
+    restart: unless-stopped
+    depends_on:
+      backend:
+        condition: service_healthy
+    ports:
+      - "${FRONTEND_PORT:-8086}:8080"
+
+volumes:
+  postgres_data:
+  backend_uploads:
