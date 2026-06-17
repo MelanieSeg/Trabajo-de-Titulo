@@ -31,10 +31,10 @@ const defaultData = {
   efficiency: {
     score: 0,
     items: [
-      { label: "Electricidad", value: 0, target: 85 },
-      { label: "Agua", value: 0, target: 90 },
-      { label: "Huella de Carbono", value: 0, target: 80 },
-      { label: "Eficiencia General", value: 0, target: 85 },
+      { label: "Electricidad", value: 0, target: 100 },
+      { label: "Agua", value: 0, target: 100 },
+      { label: "Huella de Carbono", value: 0, target: 100 },
+      { label: "Eficiencia General", value: 0, target: 100 },
     ],
   },
 };

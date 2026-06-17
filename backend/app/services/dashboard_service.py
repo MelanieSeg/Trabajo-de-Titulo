@@ -26,6 +26,8 @@ from app.schemas.api import (
 )
 from app.utils.date_utils import month_key, month_label
 
+EFFICIENCY_PERCENT_TARGET = 100.0
+
 
 def _monthly_aggregates(db: Session) -> list[dict[str, Any]]:
     stmt = (
@@ -215,6 +217,10 @@ def _target_map(db: Session) -> dict[str, float]:
     return {r.metric_name: r.target_value for r in rows}
 
 
+def _bounded_percentage(value: float) -> float:
+    return round(min(EFFICIENCY_PERCENT_TARGET, max(0.0, value)), 1)
+
+
 def get_efficiency(db: Session) -> EfficiencyResponse:
     monthly = _monthly_aggregates(db)
     if not monthly:
@@ -227,17 +233,17 @@ def get_efficiency(db: Session) -> EfficiencyResponse:
     water_target = targets.get("water_m3", max(1.0, latest["water_m3"] * 0.9))
     co2_target = targets.get("co2_avoided_ton", max(0.1, latest["co2_avoided_ton"] * 1.1))
 
-    electricity_score = min(100.0, max(0.0, (electricity_target / max(1.0, latest["electricity_kwh"])) * 100))
-    water_score = min(100.0, max(0.0, (water_target / max(1.0, latest["water_m3"])) * 100))
-    co2_score = min(100.0, max(0.0, (latest["co2_avoided_ton"] / max(0.1, co2_target)) * 100))
+    electricity_score = _bounded_percentage((electricity_target / max(1.0, latest["electricity_kwh"])) * 100)
+    water_score = _bounded_percentage((water_target / max(1.0, latest["water_m3"])) * 100)
+    co2_score = _bounded_percentage((latest["co2_avoided_ton"] / max(0.1, co2_target)) * 100)
 
-    overall_score = round((electricity_score + water_score + co2_score) / 3, 1)
+    overall_score = _bounded_percentage((electricity_score + water_score + co2_score) / 3)
 
     items = [
-        EfficiencyItem(label="Electricidad", value=round(electricity_score, 1), target=85),
-        EfficiencyItem(label="Agua", value=round(water_score, 1), target=90),
-        EfficiencyItem(label="Huella de Carbono", value=round(co2_score, 1), target=80),
-        EfficiencyItem(label="Eficiencia General", value=overall_score, target=85),
+        EfficiencyItem(label="Electricidad", value=electricity_score, target=EFFICIENCY_PERCENT_TARGET),
+        EfficiencyItem(label="Agua", value=water_score, target=EFFICIENCY_PERCENT_TARGET),
+        EfficiencyItem(label="Huella de Carbono", value=co2_score, target=EFFICIENCY_PERCENT_TARGET),
+        EfficiencyItem(label="Eficiencia General", value=overall_score, target=EFFICIENCY_PERCENT_TARGET),
     ]
 
     return EfficiencyResponse(score=overall_score, items=items)
