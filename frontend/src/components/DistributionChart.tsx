@@ -4,7 +4,7 @@ import { Card } from "@/components/ui/card";
 import { DistributionItem } from "@/lib/api";
 
 interface DistributionChartProps {
-  data: DistributionItem[];
+  data?: DistributionItem[];
 }
 
 const colors = [
@@ -15,8 +15,18 @@ const colors = [
   "hsl(160, 10%, 70%)",
 ];
 
+const defaultDistributionData: DistributionItem[] = [
+  { name: "Climatización", value: 38 },
+  { name: "Iluminación", value: 24 },
+  { name: "Maquinaria", value: 18 },
+  { name: "Oficinas", value: 12 },
+  { name: "Otros", value: 8 },
+];
+
 export function DistributionChart({ data }: DistributionChartProps) {
-  const chartData = data.map((item, index) => ({
+  const validData = (data ?? []).filter((item) => Number.isFinite(item.value) && item.value > 0);
+  const hasRealData = validData.length > 0;
+  const chartData = (hasRealData ? validData : defaultDistributionData).map((item, index) => ({
     ...item,
     color: colors[index % colors.length],
   }));
@@ -24,7 +34,9 @@ export function DistributionChart({ data }: DistributionChartProps) {
   return (
     <Card className="glass-card p-5">
       <h3 className="text-sm font-semibold text-foreground mb-1">Distribución por Área</h3>
-      <p className="text-xs text-muted-foreground mb-4">Consumo eléctrico actual</p>
+      <p className="text-xs text-muted-foreground mb-4">
+        Consumo eléctrico actual{hasRealData ? "" : ""}
+      </p>
       <ResponsiveContainer width="100%" height={200}>
         <PieChart>
           <Pie data={chartData} cx="50%" cy="50%" innerRadius={55} outerRadius={80} paddingAngle={3} dataKey="value">
